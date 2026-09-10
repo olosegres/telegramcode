@@ -1,10 +1,11 @@
 # README screenshots
 
-The Quick Start in the top-level `README.md` references the images below. Drop
-the real PNGs here with these exact filenames and they render inline. Portrait
-phone screenshots look best (the README sizes them to `width="360"`).
+The Quick Start in the top-level `README.md` references the images below. They
+are sanitized, generated Telegram-style walkthroughs, so the public repository
+does not expose a real bot token, chat, group, user id, or project. Keep these
+exact filenames and the portrait `720x1280` size (rendered at `width="360"`).
 
-| File | Step | What to capture (where the user clicks) |
+| File | Step | What the image shows |
 |---|---|---|
 | `01-botfather.png` | 2. Create the bot | The @BotFather chat: `/newbot` giving the token, then `/setprivacy` → this bot → **Disable**. |
 | `02-enable-topics.png` | 3. Set up a group | Group settings with the **Topics** (Forum mode) toggle switched on. |
@@ -12,8 +13,9 @@ phone screenshots look best (the README sizes them to `width="360"`).
 | `04-bind-and-run.png` | 5. Bind a topic | A topic where `/bind <subdir>` then `/claude` (or `/opencode`) was sent and the agent is replying. |
 
 Notes:
-- Blur/redact anything private before committing (real chat/group/user ids,
-  group name, tokens, home paths). The repo is public.
+- Keep every replacement synthetic or fully redact anything private before
+  committing (real chat/group/user ids, group name, tokens, home paths). The
+  repo is public.
 - Paths are relative, matching `demo.gif`, so they render in the GitHub/GitLab
   web view. Relative images do **not** render on the npmjs.com package page
   (the same limitation applies to `demo.gif`); switch every image reference —
