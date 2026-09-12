@@ -38,6 +38,9 @@ import {
 import { defaultDisplayVerbosityMode } from '../utils/displayVerbosity';
 import { checkIsReplacementTurnMissing, checkIsWedgedTurn } from '../utils/openCodeTurnActivity';
 import {
+  checkIsSimpleApiMethod,
+  checkProviderHasAuthCatalogEntry,
+  getGenericProviderAuthMethods,
   parseProviderAuthMethods,
   type OpenCodeAuthMethod,
 } from '../utils/openCodeAuthLogin';
@@ -1055,12 +1058,7 @@ let cachedProviders: ParsedProvidersConfig | null = null;
 let providersCacheTime = 0;
 const providersCacheTtlMs = 5 * 60 * 1000;
 
-const providerIdRe = /^[a-z0-9][a-z0-9-_]*$/;
-
-interface OpenCodeProviderAuthMethod {
-  type?: string;
-  prompts?: unknown[];
-}
+const providerIdRe = /^[a-z0-9][a-z0-9._-]*$/;
 
 /**
  * @description Provider → model configuration map. Keys are provider ids
@@ -1222,18 +1220,6 @@ export function checkNeedsSchedulerMcpReregister(mcpStatus: unknown): boolean {
 
 export function buildProviderApiAuthPayload(apiKey: string): Record<string, string> {
   return { type: 'api', key: apiKey };
-}
-
-export function checkProviderSupportsSimpleApiAuth(raw: unknown, providerId: string): boolean {
-  if (!raw || typeof raw !== 'object') return false;
-  const root = raw as Record<string, unknown>;
-  const methods = root[providerId];
-  if (!Array.isArray(methods)) return false;
-  return methods.some((method) => {
-    if (!method || typeof method !== 'object') return false;
-    const { type, prompts } = method as OpenCodeProviderAuthMethod;
-    return type === 'api' && (!Array.isArray(prompts) || prompts.length === 0);
-  });
 }
 
 /**
@@ -2233,10 +2219,10 @@ export class OpenCodeAdapter extends EventEmitter implements AgentAdapter {
 
   /**
    * @description Connect an OpenCode provider through the same API-key auth
-   * endpoint the OpenCode UI uses (`PUT /auth/{providerID}`). The provider auth
-   * catalog is checked first so this Telegram flow only accepts providers whose
-   * API method needs just the key; providers with extra prompts still belong in
-   * OpenCode's native UI until the bot grows a multi-step provider form.
+   * endpoint the OpenCode UI uses (`PUT /auth/{providerID}`). Providers with a
+   * custom auth entry must expose a one-field API method; ordinary providers
+   * (including OpenRouter) use the generic API-key method synthesized from the
+   * full `/provider` catalog.
    */
   async connectProvider(_key: ThreadKey, providerId: string, apiKey: string): Promise<string | null> {
     const normalizedProviderId = providerId.trim().toLowerCase();
@@ -2247,10 +2233,8 @@ export class OpenCodeAdapter extends EventEmitter implements AgentAdapter {
     if (!trimmedApiKey) return t('connect.empty_key');
 
     try {
-      await this.ensureProviderAuthServerReady();
-
-      const providerAuth = await this.apiRequest<unknown>('GET', '/provider/auth');
-      if (!checkProviderSupportsSimpleApiAuth(providerAuth, normalizedProviderId)) {
+      const methods = await this.fetchProviderAuthMethods(normalizedProviderId);
+      if (!methods.some(checkIsSimpleApiMethod)) {
         return t('connect.unsupported_provider', { provider: normalizedProviderId });
       }
 
@@ -2279,16 +2263,19 @@ export class OpenCodeAdapter extends EventEmitter implements AgentAdapter {
   }
 
   /**
-   * @description Fetch a provider's auth methods from the live `/provider/auth`
-   * catalog (OAuth methods + the API-key method), for the `/connect` method
-   * picker. The bot drives OAuth methods out-of-band via `opencode auth login`
-   * (a pty); the API-key method reuses {@link connectProvider}. Order is
-   * catalog order. Throws on a server/transport error (the caller surfaces it).
+   * @description Fetch a provider's auth methods for the `/connect` picker.
+   * Custom OAuth/multi-step methods come from `/provider/auth`; a provider that
+   * only appears in the full `/provider` catalog gets OpenCode's ordinary
+   * one-field API-key method. Throws on a server/transport error.
    */
   async fetchProviderAuthMethods(providerId: string): Promise<OpenCodeAuthMethod[]> {
     await this.ensureProviderAuthServerReady();
-    const raw = await this.apiRequest<unknown>('GET', '/provider/auth');
-    return parseProviderAuthMethods(raw, providerId);
+    const authCatalog = await this.apiRequest<unknown>('GET', '/provider/auth');
+    if (checkProviderHasAuthCatalogEntry(authCatalog, providerId)) {
+      return parseProviderAuthMethods(authCatalog, providerId);
+    }
+    const providerCatalog = await this.apiRequest<unknown>('GET', '/provider');
+    return getGenericProviderAuthMethods(providerCatalog, providerId);
   }
 
   /**

@@ -68,6 +68,29 @@ export function parseProviderAuthMethods(raw: unknown, providerId: string): Open
   return out;
 }
 
+/** Whether a provider owns a custom auth flow in the `/provider/auth` catalog. */
+export function checkProviderHasAuthCatalogEntry(raw: unknown, providerId: string): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  return Array.isArray((raw as Record<string, unknown>)[providerId]);
+}
+
+/**
+ * OpenCode lists ordinary API-key providers in `/provider`, not `/provider/auth`.
+ * Give those providers the same one-field key flow used by the native `/connect` UI.
+ */
+export function getGenericProviderAuthMethods(raw: unknown, providerId: string): OpenCodeAuthMethod[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const providers = (raw as { all?: unknown }).all;
+  if (!Array.isArray(providers)) return [];
+  const isAvailable = providers.some((provider) => {
+    if (!provider || typeof provider !== 'object') return false;
+    return (provider as { id?: unknown }).id === providerId;
+  });
+  return isAvailable
+    ? [{ type: 'api', label: 'Manually enter API Key', hasPrompts: false }]
+    : [];
+}
+
 /** An OAuth (subscription/account) method. */
 export function checkIsOAuthMethod(method: OpenCodeAuthMethod): boolean {
   return method.type === 'oauth';

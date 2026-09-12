@@ -11,7 +11,6 @@ import {
   buildProviderApiAuthPayload,
   buildProviderAuthPath,
   checkIsValidProviderId,
-  checkProviderSupportsSimpleApiAuth,
 } from '../adapters/openCodeAdapter';
 import type { ThreadKey } from '../types';
 
@@ -21,7 +20,7 @@ interface ApiCall {
   body?: unknown;
 }
 
-function createConnectAdapter(providerAuth: unknown): {
+function createConnectAdapter(providerAuth: unknown, providers: unknown = { all: [] }): {
   adapter: OpenCodeAdapter;
   calls: ApiCall[];
 } {
@@ -32,6 +31,7 @@ function createConnectAdapter(providerAuth: unknown): {
   adapter['apiRequest'] = async (method: string, urlPath: string, body?: unknown) => {
     calls.push({ method, urlPath, body });
     if (method === 'GET' && urlPath === '/provider/auth') return providerAuth;
+    if (method === 'GET' && urlPath === '/provider') return providers;
     if (method === 'PUT') return undefined;
     throw new Error(`unexpected call ${method} ${urlPath}`);
   };
@@ -53,30 +53,21 @@ describe('OpenCode provider connect helpers', () => {
     assert.equal(checkIsValidProviderId('openai'), true);
     assert.equal(checkIsValidProviderId('github-copilot'), true);
     assert.equal(checkIsValidProviderId('cloudflare_workers'), true);
+    assert.equal(checkIsValidProviderId('wafer.ai'), true);
     assert.equal(checkIsValidProviderId('../openai'), false);
     assert.equal(checkIsValidProviderId('OpenAI'), false);
     assert.equal(checkIsValidProviderId(''), false);
   });
 
-  it('detects only API-key auth methods that need no extra prompts', () => {
-    const providerAuth = {
-      openai: [{ type: 'oauth' }, { type: 'api' }],
-      gitlab: [{ type: 'api', prompts: [{ key: 'instanceUrl' }] }],
-      xai: [{ type: 'api', prompts: [] }],
-    };
-
-    assert.equal(checkProviderSupportsSimpleApiAuth(providerAuth, 'openai'), true);
-    assert.equal(checkProviderSupportsSimpleApiAuth(providerAuth, 'xai'), true);
-    assert.equal(checkProviderSupportsSimpleApiAuth(providerAuth, 'gitlab'), false);
-    assert.equal(checkProviderSupportsSimpleApiAuth(providerAuth, 'missing'), false);
-  });
 });
 
 describe('OpenCodeAdapter.connectProvider', () => {
   const key: ThreadKey = { chatId: -100, threadId: 9085 };
 
   it('checks provider auth support then PUTs the API-key auth payload', async () => {
-    const { adapter, calls } = createConnectAdapter({ openai: [{ type: 'api' }] });
+    const { adapter, calls } = createConnectAdapter({
+      openai: [{ type: 'api', label: 'Manually enter API Key' }],
+    });
 
     const result = await adapter.connectProvider(key, 'openai', ' sk-test-secret ');
 
@@ -98,6 +89,38 @@ describe('OpenCodeAdapter.connectProvider', () => {
 
     assert.ok(typeof result === 'string' && result.includes('gitlab'));
     assert.deepEqual(calls, [{ method: 'GET', urlPath: '/provider/auth', body: undefined }]);
+  });
+
+  it('connects an ordinary API-key provider from the full OpenCode catalog', async () => {
+    const { adapter, calls } = createConnectAdapter(
+      { openai: [{ type: 'api', label: 'Manually enter API Key' }] },
+      { all: [{ id: 'openrouter' }] },
+    );
+
+    const result = await adapter.connectProvider(key, 'openrouter', 'sk-or-test-secret');
+
+    assert.equal(result, null);
+    assert.deepEqual(calls, [
+      { method: 'GET', urlPath: '/provider/auth', body: undefined },
+      { method: 'GET', urlPath: '/provider', body: undefined },
+      {
+        method: 'PUT',
+        urlPath: '/auth/openrouter',
+        body: { type: 'api', key: 'sk-or-test-secret' },
+      },
+    ]);
+  });
+
+  it('does not store a key for an unknown provider', async () => {
+    const { adapter, calls } = createConnectAdapter({}, { all: [{ id: 'openrouter' }] });
+
+    const result = await adapter.connectProvider(key, 'not-a-provider', 'sk-test-secret');
+
+    assert.ok(typeof result === 'string' && result.includes('not-a-provider'));
+    assert.deepEqual(calls, [
+      { method: 'GET', urlPath: '/provider/auth', body: undefined },
+      { method: 'GET', urlPath: '/provider', body: undefined },
+    ]);
   });
 
   it('rejects an unsafe provider id before any OpenCode request', async () => {

@@ -823,9 +823,9 @@ export interface AgentAdapter extends EventEmitter {
   connectProvider?(key: ThreadKey, providerId: string, apiKey: string): Promise<string | null>;
 
   /**
-   * Fetch a provider's auth methods from the live catalog (OAuth methods + the
-   * API-key method) for the `/connect` method picker. Optional (OpenCode only,
-   * same optional-method pattern as {@link connectProvider}).
+   * Fetch a provider's auth methods for the `/connect` method picker. OpenCode
+   * returns custom OAuth methods from its auth catalog and a generic API-key
+   * method for ordinary providers in its full provider catalog.
    */
   fetchProviderAuthMethods?(providerId: string): Promise<OpenCodeAuthMethod[]>;
 

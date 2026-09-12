@@ -1,13 +1,14 @@
 /**
- * @description Pure helpers behind the OpenCode `/connect` OAuth flow: parse the
- * provider auth catalog, detect the device-flow URL/code + the paste-flow
- * prompt out of real `opencode auth login` pty output, and decide success from
- * the on-disk `auth.json`.
+ * @description Pure helpers behind OpenCode `/connect`: resolve custom or
+ * generic provider auth methods, detect OAuth device/paste flows from real
+ * `opencode auth login` pty output, and decide success from `auth.json`.
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseProviderAuthMethods,
+  checkProviderHasAuthCatalogEntry,
+  getGenericProviderAuthMethods,
   checkIsOAuthMethod,
   checkIsSimpleApiMethod,
   buildOpenCodeAuthLoginArgs,
@@ -82,6 +83,19 @@ describe('parseProviderAuthMethods', () => {
     assert.deepEqual(parseProviderAuthMethods(catalog, 'nope'), []);
     assert.deepEqual(parseProviderAuthMethods(null, 'openai'), []);
     assert.deepEqual(parseProviderAuthMethods({ openai: 'x' }, 'openai'), []);
+  });
+
+  test('distinguishes custom auth providers from ordinary provider catalog entries', () => {
+    assert.equal(checkProviderHasAuthCatalogEntry(catalog, 'openai'), true);
+    assert.equal(checkProviderHasAuthCatalogEntry(catalog, 'openrouter'), false);
+    assert.equal(checkProviderHasAuthCatalogEntry(null, 'openai'), false);
+
+    const providerCatalog = { all: [{ id: 'openrouter' }, { id: 'wafer.ai' }] };
+    assert.deepEqual(getGenericProviderAuthMethods(providerCatalog, 'openrouter'), [
+      { type: 'api', label: 'Manually enter API Key', hasPrompts: false },
+    ]);
+    assert.deepEqual(getGenericProviderAuthMethods(providerCatalog, 'missing'), []);
+    assert.deepEqual(getGenericProviderAuthMethods({ all: 'invalid' }, 'openrouter'), []);
   });
 
   test('method classifiers', () => {

@@ -274,7 +274,7 @@ actually start an agent or terminal in the folder.
 | `/terminal` | Open a raw `$SHELL` in the bound folder — see [Raw terminal](#raw-terminal-terminal) |
 | `/claude_mode` | Switch this topic's Claude backend (tmux-scrape ⇄ json-stream); bare shows a picker — see [Claude Code backends](#claude-code-backends-claude_mode) |
 | `/model` | Switch model. If OpenCode is waiting on an old provider's retry, the next prompt interrupts that wait and starts with the selected model instead of sitting queued behind it |
-| `/connect` | Connect an OpenCode provider API key (bare `/connect` arms a paste mode; the message carrying the key is deleted) |
+| `/connect [provider]` | Connect an OpenCode provider (OpenAI by default; for example `/connect openrouter`). Special OAuth methods are shown when available; ordinary catalog providers ask for an API key and delete the key message from Telegram |
 | `/effort` | Set reasoning effort (per-thread) via inline buttons. Claude: native `/effort` levels (`low…ultracode`). OpenCode: the current model's variants, applied per-prompt. No env configuration |
 | `/verbosity` | Output-verbosity macro (`minimal\|short\|full`): sets the thinking, tool-results and sub-agent display prefs at once; `/thinking`, `/tool_results`, `/subagent` point-override afterwards. Mixed prefs show as "custom" in the picker |
 | `/thinking` | Chain-of-thought display: `full` keeps the reasoning, `short` collapses to "💭 thought for Ns", `minimal` keeps only the live working cue |
@@ -471,10 +471,11 @@ disappears and a short confirmation stays in the chosen language;
 `/language auto` returns a DM/group to automatic selection.
 
 Agent provider/auth setup is normally done inside the agents themselves:
-`claude login` for Claude CLI and OpenCode's own config/plugins for OpenCode.
-No provider API key env var is required by the bot for text sessions. For
-OpenCode, install any third-party provider plugins or authentication resolvers
-before launch if your chosen providers need them.
+`claude login` for Claude CLI and `/connect <provider-id>` (for example,
+`/connect openrouter`) or OpenCode's own config/plugins for OpenCode. No provider
+API key env var is required by the bot for text sessions. For OpenCode, install
+any third-party provider plugins or authentication resolvers before launch if
+your chosen providers need them.
 
 ### Advanced / Not Normally Needed
 
