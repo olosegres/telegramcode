@@ -60,7 +60,11 @@ import {
   type SendFilesToThread,
   type SendFilesToThreadOptions,
 } from '../utils/fileSendService';
-import type { SendMessagesToThread } from '../utils/messageSendService';
+import {
+  createSendMessagesToThread,
+  type SendMessagesToThread,
+  type SendMessagesToThreadOptions,
+} from '../utils/messageSendService';
 import {
   createFileSendTestRecorderGateway,
   type RecordedFileSendGatewayCall,
@@ -562,7 +566,8 @@ interface ServerFixture {
   recordedMessageIds: number[];
   fileSendCalls: Array<{ threadKey: string; options: SendFilesToThreadOptions }>;
   fileSendHandler: { current: SendFilesToThread };
-  messageSendCalls: Array<{ threadKey: string; messages: string[] }>;
+  messageSendCalls: Array<{ threadKey: string; options: SendMessagesToThreadOptions }>;
+  messageSendHandler: { current: SendMessagesToThread };
 }
 
 const mcpSingleMessageId = 301;
@@ -734,11 +739,18 @@ describe('scheduler MCP server end-to-end (real HTTP)', () => {
       return fileSendHandler.current(threadKey, options);
     };
 
-    const messageSendCalls: Array<{ threadKey: string; messages: string[] }> = [];
-    const sendMessagesToThread: SendMessagesToThread = async (threadKey, { messages }) => {
+    // Record the FULL options (per-item objects + authorizedWorkDir) so the
+    // MCP-layer mapping in registerMessageSendTool (`as_file`→`asFile`, dir-scope
+    // `authorizedWorkDir` injection) is observable at this boundary.
+    const messageSendCalls: Array<{ threadKey: string; options: SendMessagesToThreadOptions }> = [];
+    const defaultSendMessagesToThread: SendMessagesToThread = async (threadKey, options) => {
       if (threadKey !== threadAKey) return { ok: false, error: `invalid threadKey "${threadKey}"` };
-      messageSendCalls.push({ threadKey, messages });
-      return { ok: true, summary: `Delivered ${messages.length} messages to the topic.` };
+      return { ok: true, summary: `Delivered ${options.messages.length} messages to the topic.` };
+    };
+    const messageSendHandler = { current: defaultSendMessagesToThread };
+    const sendMessagesToThread: SendMessagesToThread = (threadKey, options) => {
+      messageSendCalls.push({ threadKey, options });
+      return messageSendHandler.current(threadKey, options);
     };
 
     const deps: SchedulerMcpDeps = {
@@ -766,6 +778,7 @@ describe('scheduler MCP server end-to-end (real HTTP)', () => {
       fileSendCalls,
       fileSendHandler,
       messageSendCalls,
+      messageSendHandler,
     };
   }
 
@@ -861,8 +874,12 @@ describe('scheduler MCP server end-to-end (real HTTP)', () => {
         arguments: { messages: ['🗞 Digest', '📅 4 September', 'headline one https://t.me/x/1'] },
       });
       assert.notEqual(result.isError, true, firstText(result));
-      assert.deepEqual(fixture.messageSendCalls, [
-        { threadKey: threadAKey, messages: ['🗞 Digest', '📅 4 September', 'headline one https://t.me/x/1'] },
+      assert.equal(fixture.messageSendCalls.length, 1);
+      assert.equal(fixture.messageSendCalls[0].threadKey, threadAKey);
+      assert.deepEqual(fixture.messageSendCalls[0].options.messages, [
+        '🗞 Digest',
+        '📅 4 September',
+        'headline one https://t.me/x/1',
       ]);
       assert.match(firstText(result), /Delivered 3 messages/);
     } finally {
@@ -880,6 +897,132 @@ describe('scheduler MCP server end-to-end (real HTTP)', () => {
       });
       assert.equal(result.isError, true);
       assert.equal(fixture.messageSendCalls.length, 0, 'no send when the threadKey is out of scope');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('directory-scoped send_messages_to_user maps as_file→asFile and injects the authorized directory', async () => {
+    // MCP-layer mapping only (the stub does not touch the fs), so no Linux gate / real file needed.
+    fixture.boundThreads.set(fixture.fileWorkDir, [threadAKey]);
+    const token = buildSchedulerMcpToken(secret, { kind: 'dir', directory: fixture.fileWorkDir });
+    const client = await buildClient(fixture.handle.port, token);
+    try {
+      const result = await client.callTool({
+        name: 'send_messages_to_user',
+        arguments: { messages: [{ path: 'clip.mp4', text: 'a caption', as_file: true }] },
+      });
+      assert.notEqual(result.isError, true, firstText(result));
+      assert.equal(fixture.messageSendCalls.length, 1);
+      assert.equal(fixture.messageSendCalls[0].threadKey, threadAKey);
+      assert.deepEqual(fixture.messageSendCalls[0].options.messages, [
+        { path: 'clip.mp4', text: 'a caption', asFile: true },
+      ]);
+      assert.equal(fixture.messageSendCalls[0].options.authorizedWorkDir, fixture.fileWorkDir);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('thread-scoped send_messages_to_user maps as_file→asFile but injects no authorized directory', async () => {
+    const token = buildSchedulerMcpToken(secret, { kind: 'thread', threadKey: threadAKey });
+    const client = await buildClient(fixture.handle.port, token);
+    try {
+      const result = await client.callTool({
+        name: 'send_messages_to_user',
+        arguments: { messages: [{ path: 'clip.mp4', as_file: true }] },
+      });
+      assert.notEqual(result.isError, true, firstText(result));
+      assert.equal(fixture.messageSendCalls.length, 1);
+      assert.deepEqual(fixture.messageSendCalls[0].options.messages, [{ path: 'clip.mp4', asFile: true }]);
+      assert.equal(fixture.messageSendCalls[0].options.authorizedWorkDir, undefined);
+    } finally {
+      await client.close();
+    }
+  });
+
+  linuxIt('directory-scoped send_messages_to_user composes with secure file delivery and rejects traversal', async () => {
+    fs.writeFileSync(path.join(fixture.fileWorkDir, 'inside.png'), 'image');
+    fs.writeFileSync(path.join(fakeHome, 'outside.png'), 'outside');
+    fixture.boundThreads.set(fixture.fileWorkDir, [threadAKey]);
+    fixture.messageSendHandler.current = createSendMessagesToThread<string>({
+      resolveTarget: (threadKey) => ({ ok: true, target: threadKey }),
+      sendChunk: async () => true,
+      sendFiles: fixture.fileSendHandler.current,
+      maxMessageLength: 4_096,
+      measureRendered: (message) => message.length,
+    });
+    const token = buildSchedulerMcpToken(secret, { kind: 'dir', directory: fixture.fileWorkDir });
+    const client = await buildClient(fixture.handle.port, token);
+    try {
+      const accepted = await client.callTool({
+        name: 'send_messages_to_user',
+        arguments: { messages: [{ path: 'inside.png', text: 'caption' }] },
+      });
+      assert.notEqual(accepted.isError, true, firstText(accepted));
+      assert.deepEqual(fixture.fileSendGatewayCalls, [
+        {
+          method: 'sendPhoto',
+          target: threadAKey,
+          source: { filename: 'inside.png', sizeBytes: 5, contents: 'image' },
+          caption: 'caption',
+        },
+      ]);
+      assert.equal(fixture.messageSendCalls[0].options.authorizedWorkDir, fixture.fileWorkDir);
+
+      const rejected = await client.callTool({
+        name: 'send_messages_to_user',
+        arguments: { messages: [{ path: '../outside.png' }] },
+      });
+      assert.equal(rejected.isError, true);
+      assert.match(firstText(rejected), /outside the bound folder/i);
+      assert.equal(fixture.fileSendGatewayCalls.length, 1, 'rejected traversal must not reach Telegram');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('send_messages_to_user coerces a bridge-stringified mixed array (OpenCode quirk)', async () => {
+    const token = buildSchedulerMcpToken(secret, { kind: 'thread', threadKey: threadAKey });
+    const client = await buildClient(fixture.handle.port, token);
+    try {
+      // OpenCode serialized the WHOLE messages array as one raw JSON STRING (live-verify
+      // 2026-09: object + object + bare string). The preprocess must parse it, and the
+      // per-item union must still validate the mixed objects/strings inside.
+      const stringified = JSON.stringify([
+        { text: 'digest 1/3', path: 'hero.png' },
+        { text: 'digest 2/3', path: 'README.md', as_file: true },
+        'digest 3/3 — plain text',
+      ]);
+      const result = await client.callTool({
+        name: 'send_messages_to_user',
+        arguments: { messages: stringified },
+      });
+      assert.notEqual(result.isError, true, firstText(result));
+      assert.equal(fixture.messageSendCalls.length, 1);
+      // Same routed items as the equivalent REAL array: attachments carry path/asFile,
+      // the bare string stays a text item, order preserved.
+      assert.deepEqual(fixture.messageSendCalls[0].options.messages, [
+        { text: 'digest 1/3', path: 'hero.png' },
+        { text: 'digest 2/3', path: 'README.md', asFile: true },
+        'digest 3/3 — plain text',
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('send_messages_to_user coerces a lone bare string into one text message', async () => {
+    const token = buildSchedulerMcpToken(secret, { kind: 'thread', threadKey: threadAKey });
+    const client = await buildClient(fixture.handle.port, token);
+    try {
+      const result = await client.callTool({
+        name: 'send_messages_to_user',
+        arguments: { messages: 'just one line' },
+      });
+      assert.notEqual(result.isError, true, firstText(result));
+      assert.equal(fixture.messageSendCalls.length, 1);
+      assert.deepEqual(fixture.messageSendCalls[0].options.messages, ['just one line']);
     } finally {
       await client.close();
     }
@@ -1032,6 +1175,32 @@ describe('scheduler MCP server end-to-end (real HTTP)', () => {
       const result = await client.callTool({
         name: 'send_file_to_user',
         arguments: { paths: ['ambiguous.bin'] },
+      });
+      const parsedResult = CallToolResultSchema.parse(result);
+
+      assert.notEqual(parsedResult.isError, true, firstText(result));
+      assert.deepEqual(parsedResult.structuredContent, {
+        kind: 'deliveryUnknown',
+        retryable: false,
+      });
+      assert.match(firstText(result), /must not retry automatically/i);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('returns message deliveryUnknown as machine-readable non-error output that forbids retry', async () => {
+    fixture.messageSendHandler.current = async () => ({
+      ok: false,
+      kind: 'deliveryUnknown',
+      error: 'Telegram may already have accepted this message; MUST NOT retry automatically.',
+    });
+    const token = buildSchedulerMcpToken(secret, { kind: 'thread', threadKey: threadAKey });
+    const client = await buildClient(fixture.handle.port, token);
+    try {
+      const result = await client.callTool({
+        name: 'send_messages_to_user',
+        arguments: { messages: [{ path: 'ambiguous.bin' }] },
       });
       const parsedResult = CallToolResultSchema.parse(result);
 

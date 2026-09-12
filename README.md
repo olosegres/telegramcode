@@ -533,6 +533,18 @@ agent even when two clients use the same JSON-RPC request id. It exposes:
   upload starts and Telegram's response never arrives, the tool returns a
   machine-readable, non-error `deliveryUnknown` outcome with `retryable:false`,
   preventing accidental duplicates.
+- `send_messages_to_user` — delivers a batch of DISCRETE messages into the topic,
+  each item posted as its OWN Telegram message in order (never merged) — for a
+  per-item digest and similar. Each item is either a plain text string OR an
+  object `{text?, path?, as_file?}` that may carry ONE attachment: a `path` item
+  reuses the SAME secure `send_file_to_user` pipeline (path relative to the bound
+  folder, supported photos inline, `.gif` as animation, `.mp4` as video, everything else a document,
+  `as_file` forces a document), with `text` used as the media caption (trimmed to
+  1024 chars — send long prose as its own text-only item). Items are validated up
+  front (an empty object is rejected and nothing is sent); a total send failure
+  returns an error, a partial one stays successful but reports how many landed,
+  and an ambiguous attachment delivery surfaces as the same non-retryable
+  `deliveryUnknown` outcome as `send_file_to_user`. Capped at 50 items per call.
 
 This server is bot-owned plumbing; if its port fails to bind, the bot still
 boots — only these agent-facing tools go inert. (Your own MCP servers still work

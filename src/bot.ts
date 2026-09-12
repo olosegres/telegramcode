@@ -10368,6 +10368,9 @@ const sendMessagesToThread = createSendMessagesToThread<ThreadKey>({
     const id = await replyChunkWithFallback(key, renderAgentHtml(chunk), chunk);
     return id !== null;
   },
+  // Reuse the SAME secure file-send pipeline as `send_file_to_user` for an
+  // attachment item — no second pipeline, no duplicated path-safety.
+  sendFiles: sendFilesToThread,
   maxMessageLength: MAX_MESSAGE_LEN,
   measureRendered: (chunk) => renderAgentHtml(chunk).length,
 });

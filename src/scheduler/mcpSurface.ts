@@ -13,7 +13,11 @@ import { z } from 'zod';
 import type { StateStore } from '../state';
 import { keyFromString, type ThreadKey } from '../types';
 import type { SendFilesToThread } from '../utils/fileSendService';
-import { maxDiscreteMessages, type SendMessagesToThread } from '../utils/messageSendService';
+import {
+  maxDiscreteMessages,
+  type DiscreteMessageItem,
+  type SendMessagesToThread,
+} from '../utils/messageSendService';
 import { getAbortError } from '../utils';
 import { describeSchedule, validateScheduleSpec } from './recurrence';
 import { createScheduleForThread } from './store';
@@ -90,7 +94,7 @@ const mcpServerInstructions = `This MCP lets the agent act on its own Telegram t
 When to use it:
 • The user asks to run/finish a plan or task LATER ("in 2h", "tomorrow 9am", "every weekday") → schedule_create. Put the work in \`prompt\`; the future run is a fresh session with no memory of this chat.
 • You produced a file/chart/screenshot/video to deliver → send_file_to_user. Videos MUST be H.264 .mp4 sent as video (never as_file/document, never .webm/.mov — those render as GIFs or don't play); transcode first if needed (the tool description has the ffmpeg recipe).
-• You want to deliver SEVERAL discrete messages (each as its own Telegram message, e.g. a per-item news digest) → send_messages_to_user.
+• You want to deliver SEVERAL discrete messages (each as its own Telegram message, e.g. a per-item news digest) → send_messages_to_user. Each item can optionally attach ONE file/photo/video (text becomes its caption).
 • You need to review or remove scheduled jobs → schedule_list / schedule_cancel.
 
 Each tool's own description has the exact argument recipe (one-shot vs cron vs N-times).`;
@@ -396,13 +400,15 @@ const scheduleCancelShape = {
 };
 
 /**
- * Coerces the `paths` argument into a string array before validation. Some MCP
- * bridges (observed: Claude-agent harnesses) serialize array tool arguments as a
- * raw JSON STRING (`'["a","b"]'`) instead of a JSON array, which a plain
- * `z.array()` rejects. Accept: a real array (pass-through), a JSON-array string
- * (parsed), or a single plain path string (wrapped into a one-element array).
+ * Coerces an ARRAY tool argument into an actual array before validation. Some
+ * MCP bridges (observed: Claude-agent harnesses AND OpenCode) serialize an array
+ * argument as a raw JSON STRING (`'["a","b"]'`, or a mixed
+ * `'[{"path":"p"},"txt"]'`) instead of a JSON array, which a plain `z.array()`
+ * rejects. Accept: a real array (pass-through), a JSON-array string (parsed —
+ * per-element validation still runs on the union afterward), or a single plain
+ * string (wrapped into a one-element array). Shared by `paths` and `messages`.
  */
-const coercePathsInput = (value: unknown): unknown => {
+const coerceJsonArrayArg = (value: unknown): unknown => {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
   if (trimmed.startsWith('[')) {
@@ -417,7 +423,7 @@ const coercePathsInput = (value: unknown): unknown => {
 
 const sendFileShape = {
   paths: z.preprocess(
-    coercePathsInput,
+    coerceJsonArrayArg,
     z
       .array(z.string().min(1))
       .min(1)
@@ -444,16 +450,59 @@ const sendFileShape = {
     .describe('Target thread "<chatId>:<threadId>". Required when a directory scope has more than one bound thread.'),
 };
 
+/**
+ * One batch item: EITHER a plain non-empty string (text-only message,
+ * backward-compatible with the original string-array tool) OR an object that may
+ * carry a text body, an attachment `path`, or both. The `.refine` rejects an
+ * all-empty object so a stray `{}` never posts nothing.
+ */
+const sendMessageItemObjectSchema = z
+  .object({
+    text: z
+      .string()
+      .optional()
+      .describe(
+        'Message body. On an ATTACHMENT item (path set) it is the media caption, trimmed to 1024 chars — put long ' +
+          'prose in its OWN text-only item instead of an attachment caption.',
+      ),
+    path: z
+      .string()
+      .optional()
+      .describe(
+        "Optional attachment, RELATIVE to this topic's bound folder (an absolute path is accepted only if it " +
+          'resolves inside it; a path outside is rejected). Supported photos and MP4 videos are sent as native ' +
+          'media, GIFs as animations, and everything else as a document.',
+      ),
+    as_file: z
+      .boolean()
+      .optional()
+      .describe('Force sendDocument for THIS attachment (original quality, no inline preview), including for MP4s.'),
+  })
+  .refine(
+    (item) => (item.text?.trim().length ?? 0) > 0 || (item.path?.trim().length ?? 0) > 0,
+    { message: 'each message object must set a non-empty text or path' },
+  );
+
 const sendMessageShape = {
   messages: z
-    .array(z.string().min(1))
-    .min(1)
-    .max(maxDiscreteMessages)
+    .preprocess(
+      coerceJsonArrayArg,
+      z
+        .array(z.union([z.string().min(1), sendMessageItemObjectSchema]))
+        .min(1)
+        .max(maxDiscreteMessages),
+    )
     .describe(
-      `1..${maxDiscreteMessages} messages; EACH element is posted as its OWN separate Telegram message, in order. ` +
+      `1..${maxDiscreteMessages} items; EACH item is posted as its OWN separate Telegram message, in order (never ` +
+        'merged). An item is EITHER a plain string (a text message) OR an object {text?, path?, as_file?}. When ' +
+        'path is set the item is delivered as an ATTACHMENT: supported photos render inline, .gif uses ' +
+        'sendAnimation, and .mp4 uses sendVideo (other video containers like .mov/.webm render as a GIF, so remux ' +
+        'to .mp4 first); everything else is a document, and text becomes the media caption (trimmed to 1024 chars ' +
+        '— send long prose as its OWN ' +
+        "text-only item). path is RELATIVE to this topic's bound folder; as_file forces the document override. " +
         'Use this when you deliberately want several distinct messages (e.g. a per-item news digest: one message ' +
-        'per headline). Do NOT also print the same content as your normal reply, or it posts twice. Each message ' +
-        'supports the usual markdown (links, bold); one that exceeds the length cap is split automatically.',
+        'per headline). Do NOT also print the same content as your normal reply, or it posts twice. Text supports ' +
+        'the usual markdown (links, bold); an over-long text item is split automatically.',
     ),
   threadKey: z
     .string()
@@ -758,9 +807,15 @@ function registerMessageSendTool(
         'Deliver a batch of DISCRETE messages into THIS topic — each item of `messages` is posted as its own ' +
         'separate Telegram message, in order (never merged). Use it when you deliberately want several messages ' +
         'instead of one, e.g. a per-item news digest (header, a date separator, then one message per headline). ' +
-        'Markdown (links, bold) works per message; an over-long message is split automatically. Note: this does ' +
-        'NOT replace your normal single reply — only reach for it when multiple discrete messages are wanted, and ' +
-        'do not also print the same content as your reply text (that would post it twice).',
+        'An item is EITHER a plain string (text message) OR an object {text?, path?, as_file?} — set `path` to ' +
+        "attach ONE file (RELATIVE to this topic's bound folder): supported photos render inline, .gif uses " +
+        'sendAnimation, and .mp4 uses sendVideo (.mov/.webm render as a GIF, so remux to .mp4 first); everything ' +
+        'else is a document, and `text` ' +
+        'becomes the media caption (trimmed to 1024 chars — send long prose as its OWN text-only item). ' +
+        '`as_file:true` forces the document override for that attachment. Markdown (links, bold) works on text ' +
+        'items; an over-long text item is split automatically. Note: this does NOT replace your normal single ' +
+        'reply — only reach for it when multiple discrete messages are wanted, and do not also print the same ' +
+        'content as your reply text (that would post it twice).',
       inputSchema: sendMessageShape,
     },
     async (args, extra) => {
@@ -771,11 +826,26 @@ function registerMessageSendTool(
       if (!resolved.ok) return errorResult(resolved.error);
       if (signal.aborted) throw getAbortError(signal);
 
+      // Map the wire shape (snake-case `as_file`) to the service's item type.
+      const items: DiscreteMessageItem[] = args.messages.map((item) =>
+        typeof item === 'string'
+          ? item
+          : {
+              ...(item.text !== undefined ? { text: item.text } : {}),
+              ...(item.path !== undefined ? { path: item.path } : {}),
+              ...(item.as_file !== undefined ? { asFile: item.as_file } : {}),
+            },
+      );
+
       const result = await deps.sendMessagesToThread(resolved.threadKey, {
-        messages: args.messages,
+        messages: items,
+        ...(scope.kind === 'dir' ? { authorizedWorkDir: scope.directory } : {}),
         signal,
       });
-      return result.ok ? textResult(result.summary) : errorResult(result.error);
+      if (result.ok) return textResult(result.summary);
+      return 'kind' in result && result.kind === 'deliveryUnknown'
+        ? deliveryUnknownResult(result.error)
+        : errorResult(result.error);
     },
   );
 }
