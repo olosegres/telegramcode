@@ -173,7 +173,8 @@ export const zhDict: Record<string, string> = {
   'language.auto_success': '✅ 语言已重置为自动。当前：{display}。',
   'language.invalid': '⚠️ 不支持 locale `{locale}`。可用：{locales}。',
 
-  'agent.ready': '{label} 已就绪，在 `{subdir}`{argsSuffix}\n发送消息：',
+  'agent.ready': '{label} 已就绪，在 `{subdir}`{argsSuffix}\n{infoBlock}发送消息：',
+  'agent.ready_model': '🧠 模型：{model}',
   'agent.no_session': '没有运行中的代理。运行 /claude 或 /opencode 启动。',
   'agent.session_ended': '{label}：会话已结束',
   'agent.stopped': '{label} 已停止',
@@ -198,6 +199,7 @@ export const zhDict: Record<string, string> = {
   'effort.choose': '⚙️ 当前 effort: {current}\n选择级别：',
   'effort.current_none': '未设置',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort：{effort}\n运行 /effort 可更改',
   'effort.invalid_level': '⚠️ 级别 `{level}` 无效。可用：{valid}。',
   'effort.not_available': 'ℹ️ 当前模型没有可用的 reasoning effort 级别。',
   'effort.not_supported': 'ℹ️ 模型 `{model}` 没有 reasoning effort 级别。',
@@ -245,6 +247,7 @@ export const zhDict: Record<string, string> = {
   'verbosity.mode.short': '简短',
   'verbosity.mode.full': '完整',
 
+  'model.set_success': '🧠 模型已设为：{model}',
   'model.saved_for_next_start': '模型已保存：{model} — 下次代理启动时应用。',
   'model.start_agent_first': '没有活跃会话。请先启动代理。',
   'model.current_default': '默认',

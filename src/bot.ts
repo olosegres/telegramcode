@@ -4221,19 +4221,53 @@ async function switchThreadAdapter(key: ThreadKey, newName: string): Promise<voi
  *    agent that takes a prompt);
  *  - any other backend (OpenCode) returns the generic `agent.ready` notice —
  *    without it the user would have no cue the session is up, since nothing greets.
+ *
+ * The `agent.ready` notice also names WHAT the session will run with — the model
+ * and the reasoning effort — plus the `/effort` pointer, because "ready" alone
+ * told the user nothing about the two settings that decide cost and quality. The
+ * `{infoBlock}` those lines fill sits directly above the closing "Send a message:"
+ * line in every locale; with both values absent it collapses to the empty string,
+ * so the notice renders exactly as it did before. `terminal.ready` is NOT given
+ * the block: a shell has neither a model nor an effort level.
+ *
+ * Both values arrive ALREADY RESOLVED so this stays pure (no adapter/state reads
+ * here — see the caller in {@link startAgentSession}).
+ *
+ * @param model Resolved model label, or `null` when no source knows one — then
+ * the row still renders, carrying the `model.current_default` text that `/status`
+ * and `/model` already use for "whatever the backend defaults to".
+ * @param effort Effort level in force, or `null` for a backend with no effort
+ * concept — then no effort line (and no `/effort` pointer) is rendered.
  */
+function getStartReadyInfoBlock(model: string | null, effort: string | null): string {
+  // Nothing known about either setting — collapse to empty so the notice reads
+  // exactly as it did before the block existed (no stray blank line).
+  if (model === null && effort === null) return '';
+  // Once anything is known the model row always renders: showing a bare effort
+  // level without saying which model runs it would be more confusing than the
+  // honest "default" marker `/status` and `/model` already use.
+  const lines = [t('agent.ready_model', { model: model ?? t('model.current_default') })];
+  if (effort !== null) lines.push(t('effort.current_hint', { effort }));
+  // Trailing newline keeps the template's closing "Send a message:" on its own line.
+  return `${lines.join('\n')}\n`;
+}
+
 export function getStartReadyMessage(
   adapter: AgentAdapter,
   subdir: string,
-  args?: string,
+  args: string | undefined,
+  model: string | null,
+  effort: string | null,
 ): string {
   if (adapter.selfGreetsOnStart) return '';
-  const readyKey = adapter.name === 'terminal' ? 'terminal.ready' : 'agent.ready';
-  return t(readyKey, {
+  const isTerminal = adapter.name === 'terminal';
+  const vars: Record<string, string> = {
     label: adapter.label,
     subdir,
     argsSuffix: args ? ` (${args})` : '',
-  });
+  };
+  if (isTerminal) return t('terminal.ready', vars);
+  return t('agent.ready', { ...vars, infoBlock: getStartReadyInfoBlock(model, effort) });
 }
 
 async function startAgentSession(key: ThreadKey, args?: string): Promise<string> {
@@ -4285,7 +4319,21 @@ async function startAgentSession(key: ThreadKey, args?: string): Promise<string>
     void replayBufferedPrompts(key);
 
     const subdir = state.getBinding(key)?.subdir ?? path.basename(ENV.workRoot);
-    return getStartReadyMessage(adapter, subdir, args);
+    // Resolve what the fresh session will actually run with, for the ready
+    // notice. Effort follows the `/status` rule: a backend without `getEffort`
+    // has no effort concept (null → no effort line), otherwise an unset pref
+    // means the default the agent really applies. The model resolution
+    // DELIBERATELY skips the runtime self-report `/status` consults — that is an
+    // async transcript/HTTP read and must not be added to the start path. The
+    // agent row was just written by `persistAdapterSessionIds`, so the persisted
+    // fallback is populated by now.
+    const effort = adapter.getEffort ? (adapter.getEffort(key) ?? defaultEffortLevel) : null;
+    const model = getThreadStatusModel({
+      adapterModel: adapter.getCurrentModel?.(key) ?? null,
+      runtimeModel: null,
+      persistedModel: state.getAgent(key)?.model ?? null,
+    });
+    return getStartReadyMessage(adapter, subdir, args, model, effort);
   } catch (e) {
     // Start failed — the buffered prompts have nowhere to go, so drop them
     // rather than replaying into a dead session. Stop the boot loader too: a
@@ -4585,6 +4633,11 @@ async function applyModelSelection(
 ): Promise<{ isOk: boolean; message: string; setModelError: string | null; displayLabel: string }> {
   const setModelError = adapter.setModel ? await adapter.setModel(key, modelId) : null;
   const displayLabel = adapter.getCurrentModel?.(key) || modelId;
+  // Read AFTER the switch: a model that does not offer the level in force
+  // clears it (`effort.cleared_on_model_switch`), so a pre-switch read would
+  // report a level the new model no longer runs. Same resolution rule as
+  // `/status` — no `getEffort` means the backend has no effort concept at all.
+  const effort = adapter.getEffort ? (adapter.getEffort(key) ?? defaultEffortLevel) : null;
   const decision = getModelSetReplyDecision(
     {
       hasSetModel: Boolean(adapter.setModel),
@@ -4592,6 +4645,7 @@ async function applyModelSelection(
       isActive: adapter.checkIsActive(key),
       adapterLabel: adapter.label,
       displayLabel,
+      effort,
     },
     t,
   );

@@ -12,10 +12,21 @@
  * gate on session state itself.
  *
  * `isActive` only distinguishes the two SUCCESS copies: a live switch
- * ("Model set to: …") vs a pref saved for the next agent start
- * (`model.saved_for_next_start`). The deferred-success copy comes from i18n, so
- * a `translate` callback is injected (callers pass `t`; tests pass a stub) to
- * keep this module free of the i18n import and trivially testable.
+ * (`model.set_success`) vs a pref saved for the next agent start
+ * (`model.saved_for_next_start`). BOTH copies come from i18n, so a `translate`
+ * callback is injected (callers pass `t`; tests pass a stub) to keep this module
+ * free of the i18n import and trivially testable. The live copy used to be a
+ * hardcoded English template literal — once the effort hint below was appended
+ * to it, a non-English chat would have read an English headline above a
+ * translated hint, so it moved into the catalog too.
+ *
+ * Both success copies carry the SHARED `effort.current_hint` block (the same key
+ * the post-start `agent.ready` notice renders), so the level in force and the
+ * "/effort to change it" pointer can never drift between the two messages. The
+ * caller must resolve `effort` AFTER `setModel` returned: switching to a model
+ * that does not offer the current level clears it (see
+ * `effort.cleared_on_model_switch`), so a pre-switch read would name a level
+ * that no longer applies.
  *
  * @name ModelSetReplyDecision
  * @description
@@ -34,6 +45,11 @@ export interface ModelSetReplyDecisionInput {
   adapterLabel: string;
   /** Resolved model label to show on success (current model or the picked id). */
   displayLabel: string;
+  /**
+   * Reasoning effort in force AFTER the switch, or `null` when the backend has
+   * no effort concept (Claude tmux/terminal) — then no effort block is appended.
+   */
+  effort: string | null;
 }
 
 export interface ModelSetReplyDecision {
@@ -44,7 +60,9 @@ export interface ModelSetReplyDecision {
 /**
  * @description Build the reply for a `/model`-set attempt.
  *
- * @param translate i18n lookup (`t`) — only used for the deferred-success key.
+ * @param translate i18n lookup (`t`) — used for both success copies and the
+ * shared effort block. The `unsupported` / `error` branches carry no effort
+ * hint: nothing was switched, so naming the level would only add noise.
  */
 export function getModelSetReplyDecision(
   input: ModelSetReplyDecisionInput,
@@ -56,11 +74,12 @@ export function getModelSetReplyDecision(
   if (input.setModelError) {
     return { isOk: false, message: `Error: ${input.setModelError}` };
   }
-  if (input.isActive) {
-    return { isOk: true, message: `Model set to: ${input.displayLabel}` };
-  }
+  const effortSuffix = input.effort === null
+    ? ''
+    : `\n${translate('effort.current_hint', { effort: input.effort })}`;
+  const successKey = input.isActive ? 'model.set_success' : 'model.saved_for_next_start';
   return {
     isOk: true,
-    message: translate('model.saved_for_next_start', { model: input.displayLabel }),
+    message: translate(successKey, { model: input.displayLabel }) + effortSuffix,
   };
 }

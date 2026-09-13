@@ -177,7 +177,8 @@ export const ruDict: Record<string, string> = {
   'language.auto_success': '✅ Автовыбор языка включён. Сейчас: {display}.',
   'language.invalid': '⚠️ Локаль `{locale}` не поддерживается. Доступно: {locales}.',
 
-  'agent.ready': '{label} готов в `{subdir}`{argsSuffix}\nОтправь сообщение:',
+  'agent.ready': '{label} готов в `{subdir}`{argsSuffix}\n{infoBlock}Отправь сообщение:',
+  'agent.ready_model': '🧠 Модель: {model}',
   'agent.no_session': 'Агент не запущен. /claude или /opencode — старт.',
   'agent.session_ended': '{label}: сессия завершена',
   'agent.stopped': '{label} остановлен',
@@ -202,6 +203,7 @@ export const ruDict: Record<string, string> = {
   'effort.choose': '⚙️ Текущий effort: {current}\nВыбери уровень:',
   'effort.current_none': 'не задан',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort: {effort}\nИзменить — /effort',
   'effort.invalid_level': '⚠️ Уровень `{level}` недопустим. Доступные: {valid}.',
   'effort.not_available': 'ℹ️ Для текущей модели уровни reasoning effort недоступны.',
   'effort.not_supported': 'ℹ️ Модель `{model}` не поддерживает уровни reasoning effort.',
@@ -249,6 +251,7 @@ export const ruDict: Record<string, string> = {
   'verbosity.mode.short': 'кратко',
   'verbosity.mode.full': 'подробно',
 
+  'model.set_success': '🧠 Модель выбрана: {model}',
   'model.saved_for_next_start': 'Модель сохранена: {model} — применится при старте агента.',
   'model.start_agent_first': 'Нет активной сессии. Сначала запусти агента.',
   'model.current_default': 'по умолчанию',

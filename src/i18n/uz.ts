@@ -173,7 +173,8 @@ export const uzDict: Record<string, string> = {
   'language.auto_success': '✅ Til avtomatik rejimga qaytarildi. Joriy: {display}.',
   'language.invalid': '⚠️ `{locale}` locale qo‘llab-quvvatlanmaydi. Mavjud: {locales}.',
 
-  'agent.ready': '{label} `{subdir}`{argsSuffix} da tayyor\nXabar yuboring:',
+  'agent.ready': '{label} `{subdir}`{argsSuffix} da tayyor\n{infoBlock}Xabar yuboring:',
+  'agent.ready_model': '🧠 Model: {model}',
   'agent.no_session': 'Agent ishlamayapti. /claude yoki /opencode bilan boshlang.',
   'agent.session_ended': '{label}: seans tugadi',
   'agent.stopped': '{label} to‘xtatildi',
@@ -198,6 +199,7 @@ export const uzDict: Record<string, string> = {
   'effort.choose': '⚙️ Joriy effort: {current}\nDarajani tanlang:',
   'effort.current_none': 'o‘rnatilmagan',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort: {effort}\nO‘zgartirish uchun /effort',
   'effort.invalid_level': '⚠️ `{level}` darajasi yaroqsiz. Mavjud: {valid}.',
   'effort.not_available': 'ℹ️ Joriy model uchun reasoning effort darajalari mavjud emas.',
   'effort.not_supported': 'ℹ️ `{model}` modelida reasoning effort darajalari yo‘q.',
@@ -245,6 +247,7 @@ export const uzDict: Record<string, string> = {
   'verbosity.mode.short': 'qisqa',
   'verbosity.mode.full': "to'liq",
 
+  'model.set_success': '🧠 Model tanlandi: {model}',
   'model.saved_for_next_start': 'Model saqlandi: {model} — keyingi agent boshlashda qo‘llanadi.',
   'model.start_agent_first': 'Faol seans yo‘q. Avval agentni boshlang.',
   'model.current_default': 'standart',

@@ -188,6 +188,17 @@ config/variants, not a per-message API field).
   and keeps the loader up until that banner lands. OpenCode/terminal don't
   self-greet, so they keep the `agent.ready` / `terminal.ready` cue (and boot uses
   a one-shot typing ping, not the sustained loader — no output is coming yet).
+  **The `agent.ready` notice names what the session will run with** — a `{infoBlock}`
+  (in every locale, right above the closing "Send a message:") carries `🧠 Model:`
+  (`agent.ready_model`; an unresolved model degrades to the `model.current_default`
+  text `/status` and `/model` already show) plus the SHARED `effort.current_hint`
+  block (`⚙️ Effort: …` + the `/effort` pointer). `getStartReadyMessage` stays PURE:
+  `startAgentSession` resolves both first — effort by the `/status` rule
+  (`getEffort` absent ⇒ `null` ⇒ no effort line, else the pick or `defaultEffortLevel`),
+  model via `getThreadStatusModel` with `runtimeModel: null` DELIBERATELY (the runtime
+  self-report is an async transcript/HTTP read that must not enter the start path).
+  Both `null` ⇒ the block collapses to `''` and the notice reads exactly as it did
+  before it existed. `terminal.ready` has NO block — a shell has neither setting.
 - **Streaming output appends, never overwrites.** OpenCode streams a reply as
   incremental tails; every `output` emit after the first of a response carries
   `isContinuation: true` (`OutputEventMeta` in `types.ts`). The bot appends a
@@ -823,6 +834,17 @@ OpenCode events / bindings).
   - `/model` picked with NO running session persists as the thread pref and
     applies on the next agent start (OpenCode; Claude refuses — its model
     switch is a TUI keystroke with nothing to persist).
+  - **Both `/model`-set SUCCESS copies carry the effort block.** The single choke
+    point `getModelSetReplyDecision` appends the SAME `effort.current_hint` the
+    `agent.ready` notice uses, under the live `model.set_success` headline and
+    under the deferred `model.saved_for_next_start` one — so the two messages can
+    never drift. The headline is localised (`model.set_success`; it used to be a
+    hardcoded English literal, which would have read as English above a translated
+    hint). `applyModelSelection` resolves the level AFTER `setModel` returned —
+    switching to a model that lacks the current level CLEARS it (see
+    `effort.cleared_on_model_switch`), so a pre-switch read would name a dead
+    level. `effort: null` (a backend with no effort concept) ⇒ no line; the
+    `unsupported` / `error` branches never get one (nothing was switched).
   - `/effort` sets per-thread reasoning effort and offers tappable inline
     buttons (one per available level). **Works pre-session like `/model`** (no
     `checkIsActive` gate): the pick is persisted and the next session replays it

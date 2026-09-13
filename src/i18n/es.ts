@@ -173,7 +173,8 @@ export const esDict: Record<string, string> = {
   'language.auto_success': '✅ Idioma restablecido a automático. Actual: {display}.',
   'language.invalid': '⚠️ La locale `{locale}` no es compatible. Disponibles: {locales}.',
 
-  'agent.ready': '{label} listo en `{subdir}`{argsSuffix}\nEnvía un mensaje:',
+  'agent.ready': '{label} listo en `{subdir}`{argsSuffix}\n{infoBlock}Envía un mensaje:',
+  'agent.ready_model': '🧠 Modelo: {model}',
   'agent.no_session': 'No hay agente en ejecución. /claude o /opencode para iniciar.',
   'agent.session_ended': '{label}: sesión finalizada',
   'agent.stopped': '{label} detenido',
@@ -198,6 +199,7 @@ export const esDict: Record<string, string> = {
   'effort.choose': '⚙️ Effort actual: {current}\nElige un nivel:',
   'effort.current_none': 'no establecido',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort: {effort}\nUsa /effort para cambiarlo',
   'effort.invalid_level': '⚠️ Nivel `{level}` inválido. Disponibles: {valid}.',
   'effort.not_available': 'ℹ️ No hay niveles de reasoning effort disponibles para el modelo actual.',
   'effort.not_supported': 'ℹ️ El modelo `{model}` no tiene niveles de reasoning effort.',
@@ -245,6 +247,7 @@ export const esDict: Record<string, string> = {
   'verbosity.mode.short': 'corto',
   'verbosity.mode.full': 'completo',
 
+  'model.set_success': '🧠 Modelo establecido: {model}',
   'model.saved_for_next_start': 'Modelo guardado: {model} — se aplicará en el próximo inicio de agente.',
   'model.start_agent_first': 'No hay sesión activa. Inicia un agente primero.',
   'model.current_default': 'predeterminado',

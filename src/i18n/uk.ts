@@ -179,7 +179,8 @@ export const ukDict: Record<string, string> = {
   'language.auto_success': '✅ Мову скинуто на авто. Зараз: {display}.',
   'language.invalid': '⚠️ Локаль `{locale}` не підтримується. Доступні: {locales}.',
 
-  'agent.ready': '{label} готовий у `{subdir}`{argsSuffix}\nНадішли повідомлення:',
+  'agent.ready': '{label} готовий у `{subdir}`{argsSuffix}\n{infoBlock}Надішли повідомлення:',
+  'agent.ready_model': '🧠 Модель: {model}',
   'agent.no_session': 'Агент не запущений. /claude або /opencode — щоб запустити.',
   'agent.session_ended': '{label}: сесію завершено',
   'agent.stopped': '{label} зупинено',
@@ -204,6 +205,7 @@ export const ukDict: Record<string, string> = {
   'effort.choose': '⚙️ Поточний effort: {current}\nОбери рівень:',
   'effort.current_none': 'не задано',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort: {effort}\nЗмінити — /effort',
   'effort.invalid_level': '⚠️ Рівень `{level}` недопустимий. Доступні: {valid}.',
   'effort.not_available': 'ℹ️ Для поточної моделі рівні reasoning effort недоступні.',
   'effort.not_supported': 'ℹ️ Модель `{model}` не має рівнів reasoning effort.',
@@ -251,6 +253,7 @@ export const ukDict: Record<string, string> = {
   'verbosity.mode.short': 'коротко',
   'verbosity.mode.full': 'докладно',
 
+  'model.set_success': '🧠 Модель обрано: {model}',
   'model.saved_for_next_start': 'Модель збережено: {model} — застосується при старті агента.',
   'model.start_agent_first': 'Немає активної сесії. Спершу запусти агента.',
   'model.current_default': 'за замовчуванням',

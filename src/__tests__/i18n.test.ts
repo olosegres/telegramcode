@@ -129,6 +129,53 @@ test('model-selection keys exist in every locale (S5)', () => {
   assert.ok(checkKeyInAllLangs('model.start_agent_first'), 'model.start_agent_first missing in some locale');
 });
 
+test('start-notice model + effort keys exist in every locale', () => {
+  for (const code of ['agent.ready_model', 'effort.current_hint', 'model.set_success']) {
+    assert.ok(checkKeyInAllLangs(code), `${code} missing in some locale`);
+  }
+});
+
+test('agent.ready carries the {infoBlock} placeholder in every locale', () => {
+  // The block is what makes the notice name the model + effort. A locale that
+  // lost the placeholder would silently drop both rows for its users.
+  for (const locale of localeCodes) {
+    const template = getKeyInLang(locale, 'agent.ready');
+    assert.ok(template, `agent.ready missing in ${locale}`);
+    assert.ok(
+      template?.includes('{infoBlock}'),
+      `agent.ready in ${locale} lost the {infoBlock} placeholder: "${template}"`,
+    );
+  }
+});
+
+test('agent.ready substitutes an empty {infoBlock} away entirely', () => {
+  const out = t('agent.ready', { label: 'OpenCode', subdir: 'myProject', argsSuffix: '', infoBlock: '' });
+  assert.ok(!out.includes('{infoBlock}'), `placeholder not substituted: "${out}"`);
+  assert.ok(!out.includes('\n\n'), `an empty info block must leave no blank line: "${out}"`);
+});
+
+test('agent.ready_model substitutes the {model}', () => {
+  const out = t('agent.ready_model', { model: 'anthropic/claude-opus-4-8' });
+  assert.ok(out.includes('anthropic/claude-opus-4-8'), `expected the model name in "${out}"`);
+  assert.ok(!out.includes('{model}'), `placeholder not substituted: "${out}"`);
+});
+
+test('effort.current_hint substitutes the {effort} and names /effort in every locale', () => {
+  for (const locale of localeCodes) {
+    const out = runWithLocale(locale, () => t('effort.current_hint', { effort: 'xhigh' }));
+    assert.ok(out.includes('xhigh'), `expected the level in ${locale}: "${out}"`);
+    assert.ok(!out.includes('{effort}'), `placeholder not substituted in ${locale}: "${out}"`);
+    // The command name itself stays literal — it is typed, not translated.
+    assert.ok(out.includes('/effort'), `expected "/effort" in ${locale}: "${out}"`);
+  }
+});
+
+test('model.set_success substitutes the {model} name', () => {
+  const out = t('model.set_success', { model: 'anthropic/claude-opus-4-8' });
+  assert.ok(out.includes('anthropic/claude-opus-4-8'), `expected the model name in "${out}"`);
+  assert.ok(!out.includes('{model}'), `placeholder not substituted: "${out}"`);
+});
+
 test('rename-session keys exist in every locale', () => {
   assert.ok(checkKeyInAllLangs('rename_session.usage'), 'rename_session.usage missing in some locale');
   assert.ok(checkKeyInAllLangs('rename_session.start_agent_first'), 'rename_session.start_agent_first missing in some locale');

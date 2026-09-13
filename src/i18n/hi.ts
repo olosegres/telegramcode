@@ -173,7 +173,8 @@ export const hiDict: Record<string, string> = {
   'language.auto_success': '✅ भाषा ऑटो पर रीसेट की गई। मौजूदा: {display}।',
   'language.invalid': '⚠️ locale `{locale}` समर्थित नहीं है। उपलब्ध: {locales}.',
 
-  'agent.ready': '{label} `{subdir}`{argsSuffix} में तैयार\nएक संदेश भेजें:',
+  'agent.ready': '{label} `{subdir}`{argsSuffix} में तैयार\n{infoBlock}एक संदेश भेजें:',
+  'agent.ready_model': '🧠 मॉडल: {model}',
   'agent.no_session': 'कोई एजेंट नहीं चल रहा। /claude या /opencode से शुरू करें।',
   'agent.session_ended': '{label}: सत्र समाप्त',
   'agent.stopped': '{label} रुक गया',
@@ -198,6 +199,7 @@ export const hiDict: Record<string, string> = {
   'effort.choose': '⚙️ वर्तमान effort: {current}\nएक स्तर चुनें:',
   'effort.current_none': 'सेट नहीं',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort: {effort}\nबदलने के लिए /effort चलाएँ',
   'effort.invalid_level': '⚠️ स्तर `{level}` अमान्य है। उपलब्ध: {valid}।',
   'effort.not_available': 'ℹ️ वर्तमान मॉडल के लिए कोई reasoning effort स्तर उपलब्ध नहीं।',
   'effort.not_supported': 'ℹ️ मॉडल `{model}` में कोई reasoning effort स्तर नहीं है।',
@@ -245,6 +247,7 @@ export const hiDict: Record<string, string> = {
   'verbosity.mode.short': 'संक्षिप्त',
   'verbosity.mode.full': 'पूर्ण',
 
+  'model.set_success': '🧠 मॉडल सेट किया गया: {model}',
   'model.saved_for_next_start': 'मॉडल सहेजा गया: {model} — अगली एजेंट शुरुआत पर लागू।',
   'model.start_agent_first': 'कोई सक्रिय सत्र नहीं। पहले एक एजेंट शुरू करें।',
   'model.current_default': 'डिफ़ॉल्ट',

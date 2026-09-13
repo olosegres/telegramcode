@@ -173,7 +173,8 @@ export const deDict: Record<string, string> = {
   'language.auto_success': '✅ Sprache auf automatisch zurückgesetzt. Aktuell: {display}.',
   'language.invalid': '⚠️ Locale `{locale}` wird nicht unterstützt. Verfügbar: {locales}.',
 
-  'agent.ready': '{label} bereit in `{subdir}`{argsSuffix}\nSende eine Nachricht:',
+  'agent.ready': '{label} bereit in `{subdir}`{argsSuffix}\n{infoBlock}Sende eine Nachricht:',
+  'agent.ready_model': '🧠 Modell: {model}',
   'agent.no_session': 'Kein Agent läuft. /claude oder /opencode zum Starten.',
   'agent.session_ended': '{label}: Session beendet',
   'agent.stopped': '{label} gestoppt',
@@ -198,6 +199,7 @@ export const deDict: Record<string, string> = {
   'effort.choose': '⚙️ Aktueller Effort: {current}\nWähle eine Stufe:',
   'effort.current_none': 'nicht gesetzt',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort: {effort}\nMit /effort änderbar',
   'effort.invalid_level': '⚠️ Stufe `{level}` ist ungültig. Verfügbar: {valid}.',
   'effort.not_available': 'ℹ️ Für das aktuelle Modell sind keine Reasoning-Effort-Stufen verfügbar.',
   'effort.not_supported': 'ℹ️ Modell `{model}` hat keine Reasoning-Effort-Stufen.',
@@ -245,6 +247,7 @@ export const deDict: Record<string, string> = {
   'verbosity.mode.short': 'kurz',
   'verbosity.mode.full': 'voll',
 
+  'model.set_success': '🧠 Modell gesetzt auf: {model}',
   'model.saved_for_next_start': 'Modell gespeichert: {model} — wird beim nächsten Agent-Start angewendet.',
   'model.start_agent_first': 'Keine aktive Session. Starte zuerst einen Agent.',
   'model.current_default': 'Standard',

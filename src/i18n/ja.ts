@@ -173,7 +173,8 @@ export const jaDict: Record<string, string> = {
   'language.auto_success': '✅ 言語を自動に戻しました。現在: {display}。',
   'language.invalid': '⚠️ locale `{locale}` はサポートされていません。利用可能: {locales}。',
 
-  'agent.ready': '{label} が `{subdir}`{argsSuffix} で準備完了\nメッセージを送信:',
+  'agent.ready': '{label} が `{subdir}`{argsSuffix} で準備完了\n{infoBlock}メッセージを送信:',
+  'agent.ready_model': '🧠 モデル: {model}',
   'agent.no_session': 'エージェントが実行中ではありません。/claude または /opencode で起動。',
   'agent.session_ended': '{label}: セッション終了',
   'agent.stopped': '{label} 停止',
@@ -198,6 +199,7 @@ export const jaDict: Record<string, string> = {
   'effort.choose': '⚙️ 現在の effort: {current}\nレベルを選択:',
   'effort.current_none': '未設定',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort: {effort}\n変更するには /effort',
   'effort.invalid_level': '⚠️ レベル `{level}` は無効です。利用可能: {valid}。',
   'effort.not_available': 'ℹ️ 現在のモデルでは reasoning effort レベルは利用できません。',
   'effort.not_supported': 'ℹ️ モデル `{model}` には reasoning effort レベルがありません。',
@@ -245,6 +247,7 @@ export const jaDict: Record<string, string> = {
   'verbosity.mode.short': '短縮',
   'verbosity.mode.full': '詳細',
 
+  'model.set_success': '🧠 モデルを設定: {model}',
   'model.saved_for_next_start': 'モデルを保存: {model} — 次回エージェント起動時に適用されます。',
   'model.start_agent_first': 'アクティブなセッションがありません。先にエージェントを起動してください。',
   'model.current_default': 'デフォルト',

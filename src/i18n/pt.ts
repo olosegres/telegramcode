@@ -173,7 +173,8 @@ export const ptDict: Record<string, string> = {
   'language.auto_success': '✅ Idioma reposto para automático. Atual: {display}.',
   'language.invalid': '⚠️ A locale `{locale}` não é suportada. Disponíveis: {locales}.',
 
-  'agent.ready': '{label} pronto em `{subdir}`{argsSuffix}\nEnvia uma mensagem:',
+  'agent.ready': '{label} pronto em `{subdir}`{argsSuffix}\n{infoBlock}Envia uma mensagem:',
+  'agent.ready_model': '🧠 Modelo: {model}',
   'agent.no_session': 'Sem agente em execução. /claude ou /opencode para iniciar.',
   'agent.session_ended': '{label}: sessão terminada',
   'agent.stopped': '{label} parado',
@@ -198,6 +199,7 @@ export const ptDict: Record<string, string> = {
   'effort.choose': '⚙️ Effort atual: {current}\nEscolhe um nível:',
   'effort.current_none': 'não definido',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort: {effort}\nUsa /effort para alterar',
   'effort.invalid_level': '⚠️ Nível `{level}` inválido. Disponíveis: {valid}.',
   'effort.not_available': 'ℹ️ Sem níveis de reasoning effort disponíveis para o modelo atual.',
   'effort.not_supported': 'ℹ️ O modelo `{model}` não tem níveis de reasoning effort.',
@@ -245,6 +247,7 @@ export const ptDict: Record<string, string> = {
   'verbosity.mode.short': 'curto',
   'verbosity.mode.full': 'completo',
 
+  'model.set_success': '🧠 Modelo definido: {model}',
   'model.saved_for_next_start': 'Modelo guardado: {model} — aplica-se no próximo início de agente.',
   'model.start_agent_first': 'Sem sessão ativa. Inicia um agente primeiro.',
   'model.current_default': 'padrão',

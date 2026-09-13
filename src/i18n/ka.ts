@@ -173,7 +173,8 @@ export const kaDict: Record<string, string> = {
   'language.auto_success': '✅ ენა დაბრუნდა ავტომატურ რეჟიმზე. მიმდინარე: {display}.',
   'language.invalid': '⚠️ locale `{locale}` არ არის მხარდაჭერილი. ხელმისაწვდომია: {locales}.',
 
-  'agent.ready': '{label} მზადაა `{subdir}`{argsSuffix}-ში\nგამოგვიგზავნეთ შეტყობინება:',
+  'agent.ready': '{label} მზადაა `{subdir}`{argsSuffix}-ში\n{infoBlock}გამოგვიგზავნეთ შეტყობინება:',
+  'agent.ready_model': '🧠 მოდელი: {model}',
   'agent.no_session': 'აგენტი არ არის გაშვებული. /claude ან /opencode გასაშვებად.',
   'agent.session_ended': '{label}: სესია დასრულდა',
   'agent.stopped': '{label} გაჩერდა',
@@ -198,6 +199,7 @@ export const kaDict: Record<string, string> = {
   'effort.choose': '⚙️ მიმდინარე effort: {current}\nაირჩიეთ დონე:',
   'effort.current_none': 'არ არის დაყენებული',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort: {effort}\nშესაცვლელად გაუშვით /effort',
   'effort.invalid_level': '⚠️ დონე `{level}` არასწორია. ხელმისაწვდომი: {valid}.',
   'effort.not_available': 'ℹ️ მიმდინარე მოდელისთვის reasoning effort დონეები არ არის ხელმისაწვდომი.',
   'effort.not_supported': 'ℹ️ მოდელს `{model}` არ აქვს reasoning effort დონეები.',
@@ -245,6 +247,7 @@ export const kaDict: Record<string, string> = {
   'verbosity.mode.short': 'მოკლე',
   'verbosity.mode.full': 'სრული',
 
+  'model.set_success': '🧠 მოდელი დაყენდა: {model}',
   'model.saved_for_next_start': 'მოდელი შენახულია: {model} — მოქმედებს შემდეგ აგენტის გაშვებაზე.',
   'model.start_agent_first': 'აქტიური სესია არ არის. ჯერ გაუშვით აგენტი.',
   'model.current_default': 'ნაგულისხმევი',

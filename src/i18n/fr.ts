@@ -173,7 +173,8 @@ export const frDict: Record<string, string> = {
   'language.auto_success': '✅ Langue réinitialisée en automatique. Actuelle : {display}.',
   'language.invalid': '⚠️ Locale `{locale}` non prise en charge. Disponibles : {locales}.',
 
-  'agent.ready': '{label} prêt dans `{subdir}`{argsSuffix}\nEnvoyez un message :',
+  'agent.ready': '{label} prêt dans `{subdir}`{argsSuffix}\n{infoBlock}Envoyez un message :',
+  'agent.ready_model': '🧠 Modèle : {model}',
   'agent.no_session': 'Aucun agent en cours. /claude ou /opencode pour démarrer.',
   'agent.session_ended': '{label} : session terminée',
   'agent.stopped': '{label} arrêté',
@@ -198,6 +199,7 @@ export const frDict: Record<string, string> = {
   'effort.choose': '⚙️ Effort actuel : {current}\nChoisissez un niveau :',
   'effort.current_none': 'non défini',
   'effort.set_success': '✅ Effort : {level}',
+  'effort.current_hint': '⚙️ Effort : {effort}\nLancez /effort pour le changer',
   'effort.invalid_level': '⚠️ Niveau `{level}` invalide. Disponibles : {valid}.',
   'effort.not_available': 'ℹ️ Aucun niveau de reasoning effort disponible pour le modèle actuel.',
   'effort.not_supported': 'ℹ️ Le modèle `{model}` n\'a pas de niveaux de reasoning effort.',
@@ -245,6 +247,7 @@ export const frDict: Record<string, string> = {
   'verbosity.mode.short': 'court',
   'verbosity.mode.full': 'complet',
 
+  'model.set_success': '🧠 Modèle défini sur : {model}',
   'model.saved_for_next_start': 'Modèle enregistré : {model} — s\'appliquera au prochain démarrage d\'agent.',
   'model.start_agent_first': 'Aucune session active. Démarrez d\'abord un agent.',
   'model.current_default': 'par défaut',

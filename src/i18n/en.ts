@@ -177,7 +177,8 @@ export const enDict: Record<string, string> = {
   'language.auto_success': '✅ Language reset to auto. Current: {display}.',
   'language.invalid': '⚠️ Locale `{locale}` is not supported. Available: {locales}.',
 
-  'agent.ready': '{label} ready in `{subdir}`{argsSuffix}\nSend a message:',
+  'agent.ready': '{label} ready in `{subdir}`{argsSuffix}\n{infoBlock}Send a message:',
+  'agent.ready_model': '🧠 Model: {model}',
   'agent.no_session': 'No agent running. /claude or /opencode to start.',
   'agent.session_ended': '{label}: session ended',
   'agent.stopped': '{label} stopped',
@@ -202,6 +203,7 @@ export const enDict: Record<string, string> = {
   'effort.choose': '⚙️ Current effort: {current}\nPick a level:',
   'effort.current_none': 'not set',
   'effort.set_success': '✅ Effort: {level}',
+  'effort.current_hint': '⚙️ Effort: {effort}\nRun /effort to change it',
   'effort.invalid_level': '⚠️ Level `{level}` is not valid. Available: {valid}.',
   'effort.not_available': 'ℹ️ No reasoning-effort levels are available for the current model.',
   'effort.not_supported': 'ℹ️ Model `{model}` has no reasoning-effort levels.',
@@ -249,6 +251,7 @@ export const enDict: Record<string, string> = {
   'verbosity.mode.short': 'short',
   'verbosity.mode.full': 'full',
 
+  'model.set_success': '🧠 Model set to: {model}',
   'model.saved_for_next_start': 'Model saved: {model} — applies on next agent start.',
   'model.start_agent_first': 'No active session. Start an agent first.',
   'model.current_default': 'default',
