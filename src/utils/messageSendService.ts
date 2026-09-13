@@ -1,5 +1,6 @@
 import { splitMessage } from '../messageSplit';
-import type { SendFilesToThread } from './fileSendService';
+import { checkIsAbortError } from '../utils';
+import type { SendFilesToThread, SendFilesToThreadResult } from './fileSendService';
 
 /**
  * @description Deliver a batch of DISCRETE messages into a topic. Unlike the
@@ -54,7 +55,11 @@ export interface SendMessagesToThreadOptions {
    * like `send_file_to_user`.
    */
   authorizedWorkDir?: string;
-  /** Optional cancellation — checked between items (best-effort, coarse). */
+  /**
+   * Optional cancellation — checked between items (best-effort, coarse) AND
+   * caught when an in-flight attachment send rejects with it, so either way the
+   * caller gets the structured "cancelled after delivering N" result.
+   */
   signal?: AbortSignal;
 }
 
@@ -140,12 +145,24 @@ function formatMessageCount(count: number): string {
 }
 
 /**
+ * @description The graceful-cancellation result. Naming what ALREADY landed is
+ * load-bearing: without it the agent's natural next move is to re-send the whole
+ * batch, and the user sees the delivered items twice.
+ */
+function buildCancelledResult(landed: number): SendMessagesToThreadResult {
+  return { ok: false, error: `cancelled after delivering ${formatMessageCount(landed)}` };
+}
+
+/**
  * @description Build the discrete-message sender. Each item is delivered as its
  * OWN message, preserving order: a text item is split (defensively) into
  * Telegram-sized chunks and each chunk sent separately; an attachment item goes
  * through the injected file-send pipeline as a single path (text → caption).
  * Cancellation is checked between items (coarse — a chunk already dispatched to
- * the pacer still lands).
+ * the pacer still lands) and is ALSO caught when it is raised from inside an
+ * in-flight attachment send: `sendFiles` rejects on abort rather than returning,
+ * and letting that escape hid how many messages had already landed (the agent's
+ * natural retry then posted them twice).
  *
  * Items are validated up front (an all-empty object → error, nothing sent) so
  * the service mirrors the MCP schema's all-or-nothing rejection. Failure is NOT
@@ -175,20 +192,32 @@ export function createSendMessagesToThread<TTarget>(
     let landed = 0;
     const attachmentErrors: string[] = [];
     for (const item of normalized) {
-      if (signal?.aborted) {
-        return { ok: false, error: `cancelled after delivering ${formatMessageCount(landed)}` };
-      }
+      if (signal?.aborted) return buildCancelledResult(landed);
       if (item.kind === 'skip') continue;
 
       if (item.kind === 'file') {
         attempted += 1;
-        const fileResult = await deps.sendFiles(threadKey, {
-          paths: [item.path],
-          ...(item.caption !== undefined ? { caption: item.caption } : {}),
-          ...(item.asFile !== undefined ? { asFile: item.asFile } : {}),
-          ...(authorizedWorkDir !== undefined ? { authorizedWorkDir } : {}),
-          signal,
-        });
+        let fileResult: SendFilesToThreadResult;
+        try {
+          fileResult = await deps.sendFiles(threadKey, {
+            paths: [item.path],
+            ...(item.caption !== undefined ? { caption: item.caption } : {}),
+            ...(item.asFile !== undefined ? { asFile: item.asFile } : {}),
+            ...(authorizedWorkDir !== undefined ? { authorizedWorkDir } : {}),
+            signal,
+          });
+        } catch (error) {
+          // Unlike the between-items check, `sendFiles` REJECTS on abort (it
+          // rethrows `getAbortError`) rather than returning — so a batch
+          // cancelled mid-upload used to let the raw abort escape the whole
+          // service, hiding how many messages had already landed. Report the
+          // SAME structured cancellation instead. A genuine failure still
+          // propagates untouched, and an ambiguous delivery is unaffected:
+          // `sendFiles` maps that to a RETURNED `deliveryUnknown` result before
+          // it ever reaches its abort rethrow, so this catch cannot swallow it.
+          if (!checkIsAbortError(error)) throw error;
+          return buildCancelledResult(landed);
+        }
         if (fileResult.ok) {
           landed += 1;
         } else if ('kind' in fileResult && fileResult.kind === 'deliveryUnknown') {

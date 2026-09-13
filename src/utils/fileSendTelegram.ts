@@ -23,7 +23,7 @@ import {
   type FileSendGateway,
   type FileSendGatewayResult,
 } from './fileSendService';
-import { getAbortError } from '../utils';
+import { checkIsAbortError, getAbortError } from '../utils';
 import { checkIsApiError } from '../sendErrorClassifier';
 
 /** Telegraf input backed by one fresh source bounded to an owned descriptor snapshot. */
@@ -262,7 +262,7 @@ function throwTelegramDeliveryError<TError>(
 ): never {
   if (error instanceof FileSendDeliveryUnknownError) throw error;
   if (isAbortForwarded && signal) throw getAbortError(signal);
-  if (error instanceof Error && error.name === 'AbortError') throw error;
+  if (checkIsAbortError(error)) throw error;
   if (checkIsApiError(error) || !isDeliveryInitiated) throw error;
   const cause = error instanceof Error
     ? error

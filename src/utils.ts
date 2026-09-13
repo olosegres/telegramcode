@@ -6,6 +6,19 @@ export function getAbortError(signal: AbortSignal): Error {
   return error;
 }
 
+/**
+ * @description Whether a caught error is the abort raised for a cancelled
+ * operation. Matches on the error IDENTITY (`name`), never on its message text.
+ *
+ * Covers every abort this codebase can raise: a bare `controller.abort()` puts a
+ * DOMException named `AbortError` on `signal.reason`, and an abort carrying a
+ * custom reason (the MCP cancellation notification passes a string) is surfaced
+ * by {@link getAbortError} as a fresh `Error` with the same name.
+ */
+export function checkIsAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
 /** Sleep for the requested duration, rejecting promptly when the caller aborts. */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.reject(getAbortError(signal));

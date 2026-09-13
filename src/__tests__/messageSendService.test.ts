@@ -3,7 +3,8 @@
  * `send_messages_to_user` MCP tool: each item is delivered as its OWN message
  * (never merged), an over-long text input is split defensively, blank strings
  * are skipped, a target-resolution failure short-circuits, cancellation stops
- * between items, and — the attachment extension — an item with a `path` routes
+ * between items AND when it is raised from inside an in-flight attachment send,
+ * and — the attachment extension — an item with a `path` routes
  * through the injected file-send pipeline (caption/asFile/authorizedWorkDir
  * threaded), mixed batches preserve order, an all-empty object is rejected, and
  * a file `deliveryUnknown` terminates the batch without inviting a retry.
@@ -22,6 +23,7 @@ import type {
   SendFilesToThreadOptions,
   SendFilesToThreadResult,
 } from '../utils/fileSendService';
+import { getAbortError } from '../utils';
 
 interface FileCall {
   threadKey: string;
@@ -282,6 +284,94 @@ test('a file deliveryUnknown terminates the batch without sending later items', 
   });
   // 'a' was sent; the unknown attachment stops the batch before 'b'.
   assert.deepEqual(recorder.sent, ['a']);
+  assert.equal(result.ok, false);
+  assert.equal('kind' in result && result.kind, 'deliveryUnknown');
+  assert.match(!result.ok ? result.error : '', /outcome became unknown/);
+});
+
+test('an abort DURING an attachment send comes back as the structured cancellation', async () => {
+  // `sendFiles` REJECTS on abort (it rethrows `getAbortError`) instead of
+  // returning, and nothing caught it — so a batch cancelled mid-upload let the
+  // raw abort escape the whole service. The agent then never learned that
+  // `intro` had already landed and would re-send the whole batch, posting it
+  // twice. It must read as the same graceful cancellation the between-items
+  // check produces, naming the count already delivered.
+  const controller = new AbortController();
+  const { service, recorder } = createService({
+    sendFiles: async (_threadKey, options) => {
+      // Mirror the real pipeline: abort arrives while the upload is in flight.
+      controller.abort();
+      throw getAbortError(options.signal ?? controller.signal);
+    },
+  });
+
+  const result = await service('-100:1', {
+    messages: ['intro', { path: 'chart.png' }, 'outro'],
+    signal: controller.signal,
+  });
+
+  assert.deepEqual(recorder.sent, ['intro'], 'only the pre-abort text landed');
+  assert.equal(result.ok, false);
+  assert.equal(!result.ok && result.error, 'cancelled after delivering 1 message');
+});
+
+test('an abort carrying a custom reason is still a graceful cancellation', async () => {
+  // The MCP cancellation notification aborts with a STRING reason, so
+  // `getAbortError` synthesises a fresh `AbortError` rather than returning the
+  // reason — detection must key on the error identity, not on its message text.
+  const controller = new AbortController();
+  const { service } = createService({
+    sendFiles: async (_threadKey, options) => {
+      controller.abort('client cancelled the request');
+      throw getAbortError(options.signal ?? controller.signal);
+    },
+  });
+
+  const result = await service('-100:1', {
+    messages: ['intro', { path: 'chart.png' }],
+    signal: controller.signal,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(!result.ok && result.error, 'cancelled after delivering 1 message');
+});
+
+test('a NON-abort throw from an attachment send still propagates', async () => {
+  // The catch must not turn a genuine crash into a silent "cancelled".
+  const { service } = createService({
+    sendFiles: async () => {
+      throw new Error('disk exploded');
+    },
+  });
+
+  await assert.rejects(
+    () => service('-100:1', { messages: ['intro', { path: 'chart.png' }] }),
+    /disk exploded/,
+  );
+});
+
+test('an aborted batch still reports deliveryUnknown when the file send returns it', async () => {
+  // Ordering invariant of the real pipeline: `sendFiles` maps an ambiguous
+  // delivery to a RETURNED `deliveryUnknown` result BEFORE it considers the
+  // abort, and the new catch must not shadow that — a delivery whose outcome is
+  // unknown MUST NOT be retried, so it can never be downgraded to "cancelled".
+  const controller = new AbortController();
+  const { service } = createService({
+    sendFiles: async () => {
+      controller.abort();
+      return {
+        ok: false,
+        kind: 'deliveryUnknown',
+        error: 'Telegram delivery outcome is unknown: socket hang up',
+      } satisfies SendFilesToThreadResult;
+    },
+  });
+
+  const result = await service('-100:1', {
+    messages: ['intro', { path: 'chart.png' }],
+    signal: controller.signal,
+  });
+
   assert.equal(result.ok, false);
   assert.equal('kind' in result && result.kind, 'deliveryUnknown');
   assert.match(!result.ok ? result.error : '', /outcome became unknown/);
