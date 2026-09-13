@@ -68,6 +68,7 @@ export const esDict: Record<string, string> = {
     '*Hilo vinculado a `{subdir}`.*\n' +
     '/claude /opencode — iniciar un agente\n' +
     '/connect — conectar una API key de provider OpenCode (OpenAI por defecto)\n' +
+    '/disconnect — eliminar las credenciales guardadas de un provider\n' +
     '/terminal — abrir un shell en esta carpeta\n' +
     '/new — reiniciar la sesión (la anterior → /sessions)\n' +
     '/model /sessions — cambiar\n' +
@@ -246,6 +247,32 @@ export const esDict: Record<string, string> = {
 
   'model.saved_for_next_start': 'Modelo guardado: {model} — se aplicará en el próximo inicio de agente.',
   'model.start_agent_first': 'No hay sesión activa. Inicia un agente primero.',
+  'model.current_default': 'predeterminado',
+  'model.none_available': '🧠 Actual: {current}\n\nNo hay modelos disponibles. Define uno manualmente con /model <provider/model>.',
+  'model.invalid_number': '❌ Número inválido. Ejecuta /model para ver la lista.',
+  'model.pick_provider': '🧠 Actual: {current}\n\nElige un proveedor:',
+  'model.all_hidden': '🧠 Actual: {current}\n\nTodos los proveedores están ocultos. Toca 👁 para recuperar uno.',
+  'model.hidden_header': '🙈 Oculto en este selector — toca 👁 para restaurarlo.',
+  'model.provider_button': '📦 {provider} ({count})',
+  'model.hidden_provider_button': '🙈 {provider} ({count})',
+  'model.hide_button': '🙈',
+  'model.show_button': '👁',
+  'model.back_button': '⬅️ proveedores',
+  'model.prev_button': '⬅️ Ant.',
+  'model.next_button': 'Sig. ➡️',
+  'model.page_button': '{page}/{totalPages}',
+  'model.page_header': '🧠 {provider} — {count} modelos · página {page}/{totalPages}\nActual: {current}',
+  'model.page_hint': 'Responde con un número para elegir, o /model <nombre> para buscar.',
+  'model.page_hint_buttons_only': 'Toca un modelo para cambiar, o /model <nombre> para buscar.',
+
+  'disconnect.unsupported_backend': 'La desconexión de providers de OpenCode no está disponible en esta build.',
+  'disconnect.invalid_provider': '❌ Id de proveedor inválido {provider}. Ejemplo: /disconnect openrouter',
+  'disconnect.no_providers': 'No hay proveedores que desconectar.',
+  'disconnect.pick_provider': 'Elige un proveedor para desconectar — se eliminarán sus credenciales guardadas:',
+  'disconnect.provider_button': '🔌 {provider}',
+  'disconnect.success': '✅ Proveedor {provider} desconectado — credenciales guardadas eliminadas.',
+  'disconnect.still_active_env': '⚠️ Se eliminaron las credenciales guardadas de {provider}, pero sigue activo: OpenCode lo habilita desde una variable de entorno. Elimina esa variable y reinicia OpenCode, u ocúltalo del selector con /model.',
+  'disconnect.failed': '⚠️ No se pudo desconectar {provider}: {reason}',
 
   'rename_session.usage': 'Uso: /rename_session <nuevo título>',
   'rename_session.start_agent_first': 'No hay sesión activa. Inicia un agente primero (/claude o /opencode).',
@@ -315,6 +342,10 @@ export const esDict: Record<string, string> = {
   'cb.no_active_session': 'Sin sesión activa',
   'cb.model_error': 'Error: {error}',
   'cb.model_set': 'Modelo: {model}',
+  'cb.model_provider_gone': 'Ese proveedor ya no existe — ejecuta /model otra vez',
+  'cb.model_hidden': 'Oculto: {provider}',
+  'cb.model_shown': 'Mostrado: {provider}',
+  'cb.disconnect_expired': 'Este menú de desconexión caducó — ejecuta /disconnect otra vez',
   'cb.not_supported': 'No compatible con {label}',
   'cb.unknown_agent': 'Agente desconocido',
   'cb.agent_switched': 'Cambiado a {label}',

@@ -30,6 +30,7 @@ import {
   checkIsPlaceholderTitle,
 } from '../openCodeSessionTitle';
 import { clampEffortToAvailable, defaultEffortLevel } from '../effortLevels';
+import { getProviderDisconnectOutcome } from '../utils/providerDisconnectPlan';
 import { getSseStreamTransition } from '../utils/sseStreamLifecycle';
 import {
   buildDelegatingStatusText,
@@ -2250,6 +2251,44 @@ export class OpenCodeAdapter extends EventEmitter implements AgentAdapter {
       const reason = error instanceof Error ? error.message : String(error);
       console.warn(`[OpenCode] provider connect failed for ${normalizedProviderId}:`, reason);
       return t('connect.failed', { provider: normalizedProviderId, reason });
+    }
+  }
+
+  /**
+   * @description Disconnect a provider through the same auth endpoint
+   * `/connect` writes to (`DELETE /auth/{providerID}`), then report what the
+   * delete actually achieved.
+   *
+   * `DELETE /auth` only clears OpenCode's own credential store. A provider
+   * OpenCode enables from an ENVIRONMENT VARIABLE (`openrouter` ←
+   * `OPENROUTER_API_KEY`) is still fully active afterwards, so we re-read
+   * `GET /config/providers` (caches dropped first, exactly like
+   * `connectProvider` does after a credential change) and hand the still-active
+   * provider ids to {@link getProviderDisconnectOutcome}. Claiming a clean
+   * disconnect there would be a lie — that case is what the bot-side "hide
+   * provider" toggle in `/model` exists for.
+   */
+  async disconnectProvider(_key: ThreadKey, providerId: string): Promise<string | null> {
+    const normalizedProviderId = providerId.trim().toLowerCase();
+    if (!checkIsValidProviderId(normalizedProviderId)) {
+      return t('disconnect.invalid_provider', { provider: providerId });
+    }
+
+    try {
+      await this.ensureProviderAuthServerReady();
+      await this.apiRequest('DELETE', buildProviderAuthPath(normalizedProviderId));
+      resetOpenCodeProviderCaches();
+
+      const config = await this.getProvidersConfig();
+      const outcome = getProviderDisconnectOutcome(normalizedProviderId, [...config.providers.keys()]);
+      console.log(`[OpenCode] Disconnected provider: ${normalizedProviderId} (${outcome})`);
+      return outcome === 'stillActiveViaEnv'
+        ? t('disconnect.still_active_env', { provider: normalizedProviderId })
+        : null;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(`[OpenCode] provider disconnect failed for ${normalizedProviderId}:`, reason);
+      return t('disconnect.failed', { provider: normalizedProviderId, reason });
     }
   }
 

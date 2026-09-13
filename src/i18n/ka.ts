@@ -68,6 +68,7 @@ export const kaDict: Record<string, string> = {
     '*თემა დაკავშირებულია `{subdir}`-თან.*\n' +
     '/claude /opencode — აგენტის გაშვება\n' +
     '/connect — OpenCode პროვაიდერის API გასაღების დაკავშირება (ნაგულისხმევად OpenAI)\n' +
+    '/disconnect — პროვაიდერის შენახული სერთიფიკატების წაშლა\n' +
     '/terminal — shell-ის გახსნა ამ საქაღალდეში\n' +
     '/new — სესიის გადატვირთვა (ძველი → /sessions)\n' +
     '/model /sessions — გადართვა\n' +
@@ -246,6 +247,32 @@ export const kaDict: Record<string, string> = {
 
   'model.saved_for_next_start': 'მოდელი შენახულია: {model} — მოქმედებს შემდეგ აგენტის გაშვებაზე.',
   'model.start_agent_first': 'აქტიური სესია არ არის. ჯერ გაუშვით აგენტი.',
+  'model.current_default': 'ნაგულისხმევი',
+  'model.none_available': '🧠 მიმდინარე: {current}\n\nხელმისაწვდომი მოდელები არ არის. დააყენეთ ხელით: /model <provider/model>.',
+  'model.invalid_number': '❌ არასწორი ნომერი. სიის სანახავად გაუშვით /model.',
+  'model.pick_provider': '🧠 მიმდინარე: {current}\n\nაირჩიეთ პროვაიდერი:',
+  'model.all_hidden': '🧠 მიმდინარე: {current}\n\nყველა პროვაიდერი დამალულია. დააჭირეთ 👁-ს ერთ-ერთის დასაბრუნებლად.',
+  'model.hidden_header': '🙈 დამალულია ამ სიიდან — დასაბრუნებლად დააჭირეთ 👁.',
+  'model.provider_button': '📦 {provider} ({count})',
+  'model.hidden_provider_button': '🙈 {provider} ({count})',
+  'model.hide_button': '🙈',
+  'model.show_button': '👁',
+  'model.back_button': '⬅️ პროვაიდერები',
+  'model.prev_button': '⬅️ წინა',
+  'model.next_button': 'შემდეგი ➡️',
+  'model.page_button': '{page}/{totalPages}',
+  'model.page_header': '🧠 {provider} — {count} მოდელი · გვერდი {page}/{totalPages}\nმიმდინარე: {current}',
+  'model.page_hint': 'უპასუხეთ ნომრით ასარჩევად, ან /model <სახელი> საძებნელად.',
+  'model.page_hint_buttons_only': 'შესაცვლელად დააჭირეთ მოდელს, ან /model <სახელი> საძებნელად.',
+
+  'disconnect.unsupported_backend': 'ამ ბილდში OpenCode პროვაიდერის გათიშვა მიუწვდომელია.',
+  'disconnect.invalid_provider': '❌ არასწორი პროვაიდერის id {provider}. მაგალითი: /disconnect openrouter',
+  'disconnect.no_providers': 'გასათიში პროვაიდერი არ არის.',
+  'disconnect.pick_provider': 'აირჩიეთ გასათიში პროვაიდერი — მისი შენახული სერთიფიკატები წაიშლება:',
+  'disconnect.provider_button': '🔌 {provider}',
+  'disconnect.success': '✅ პროვაიდერი {provider} გაითიშა — შენახული სერთიფიკატები წაიშალა.',
+  'disconnect.still_active_env': '⚠️ {provider}-ის შენახული სერთიფიკატები წაიშალა, მაგრამ ის კვლავ აქტიურია: OpenCode მას გარემოს ცვლადით რთავს. წაშალეთ ეს ცვლადი და გადატვირთეთ OpenCode, ან დამალეთ იგი /model-ით.',
+  'disconnect.failed': '⚠️ {provider}-ის გათიშვა ვერ მოხერხდა: {reason}',
 
   'rename_session.usage': 'გამოყენება: /rename_session <ახალი სათაური>',
   'rename_session.start_agent_first': 'აქტიური სესია არ არის. ჯერ გაუშვით აგენტი (/claude ან /opencode).',
@@ -315,6 +342,10 @@ export const kaDict: Record<string, string> = {
   'cb.no_active_session': 'აქტიური სესია არ არის',
   'cb.model_error': 'შეცდომა: {error}',
   'cb.model_set': 'მოდელი: {model}',
+  'cb.model_provider_gone': 'ეს პროვაიდერი აღარ არსებობს — გაუშვით /model ხელახლა',
+  'cb.model_hidden': 'დამალულია: {provider}',
+  'cb.model_shown': 'ნაჩვენებია: {provider}',
+  'cb.disconnect_expired': 'გათიშვის ეს მენიუ ვადაგასულია — გაუშვით /disconnect ხელახლა',
   'cb.not_supported': '{label}-ისთვის არ არის მხარდაჭერილი',
   'cb.unknown_agent': 'უცნობი აგენტი',
   'cb.agent_switched': 'გადართულია {label}-ზე',

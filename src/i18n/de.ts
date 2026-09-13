@@ -68,6 +68,7 @@ export const deDict: Record<string, string> = {
     '*Thread verknüpft mit `{subdir}`.*\n' +
     '/claude /opencode — Agent starten\n' +
     '/connect — OpenCode-Provider-API-Key verbinden (Standard: OpenAI)\n' +
+    '/disconnect — gespeicherte Zugangsdaten eines Providers entfernen\n' +
     '/terminal — Shell in diesem Ordner öffnen\n' +
     '/new — Session neu starten (alte → /sessions)\n' +
     '/model /sessions — wechseln\n' +
@@ -246,6 +247,32 @@ export const deDict: Record<string, string> = {
 
   'model.saved_for_next_start': 'Modell gespeichert: {model} — wird beim nächsten Agent-Start angewendet.',
   'model.start_agent_first': 'Keine aktive Session. Starte zuerst einen Agent.',
+  'model.current_default': 'Standard',
+  'model.none_available': '🧠 Aktuell: {current}\n\nKeine Modelle verfügbar. Setze eines manuell mit /model <provider/model>.',
+  'model.invalid_number': '❌ Ungültige Nummer. Führe /model aus, um die Liste zu sehen.',
+  'model.pick_provider': '🧠 Aktuell: {current}\n\nWähle einen Anbieter:',
+  'model.all_hidden': '🧠 Aktuell: {current}\n\nAlle Anbieter sind ausgeblendet. Tippe 👁, um einen zurückzuholen.',
+  'model.hidden_header': '🙈 Aus dieser Auswahl ausgeblendet — tippe 👁 zum Wiederherstellen.',
+  'model.provider_button': '📦 {provider} ({count})',
+  'model.hidden_provider_button': '🙈 {provider} ({count})',
+  'model.hide_button': '🙈',
+  'model.show_button': '👁',
+  'model.back_button': '⬅️ Anbieter',
+  'model.prev_button': '⬅️ Zurück',
+  'model.next_button': 'Weiter ➡️',
+  'model.page_button': '{page}/{totalPages}',
+  'model.page_header': '🧠 {provider} — {count} Modelle · Seite {page}/{totalPages}\nAktuell: {current}',
+  'model.page_hint': 'Antworte mit einer Nummer zur Auswahl oder /model <Name> zum Suchen.',
+  'model.page_hint_buttons_only': 'Tippe ein Modell an, um zu wechseln, oder /model <Name> zum Suchen.',
+
+  'disconnect.unsupported_backend': 'Das Trennen von OpenCode-Providern ist in diesem Build nicht verfügbar.',
+  'disconnect.invalid_provider': '❌ Ungültige Anbieter-ID {provider}. Beispiel: /disconnect openrouter',
+  'disconnect.no_providers': 'Keine Anbieter zum Trennen.',
+  'disconnect.pick_provider': 'Wähle einen Anbieter zum Trennen — seine gespeicherten Zugangsdaten werden entfernt:',
+  'disconnect.provider_button': '🔌 {provider}',
+  'disconnect.success': '✅ Anbieter {provider} getrennt — gespeicherte Zugangsdaten entfernt.',
+  'disconnect.still_active_env': '⚠️ Die gespeicherten Zugangsdaten für {provider} wurden entfernt, der Anbieter ist aber weiterhin aktiv: OpenCode aktiviert ihn über eine Umgebungsvariable. Entferne diese Variable und starte OpenCode neu, oder blende den Anbieter über /model aus.',
+  'disconnect.failed': '⚠️ {provider} konnte nicht getrennt werden: {reason}',
 
   'rename_session.usage': 'Verwendung: /rename_session <neuer Titel>',
   'rename_session.start_agent_first': 'Keine aktive Session. Starte zuerst einen Agent (/claude oder /opencode).',
@@ -315,6 +342,10 @@ export const deDict: Record<string, string> = {
   'cb.no_active_session': 'Keine aktive Session',
   'cb.model_error': 'Fehler: {error}',
   'cb.model_set': 'Modell: {model}',
+  'cb.model_provider_gone': 'Dieser Anbieter existiert nicht mehr — /model erneut ausführen',
+  'cb.model_hidden': 'Ausgeblendet: {provider}',
+  'cb.model_shown': 'Eingeblendet: {provider}',
+  'cb.disconnect_expired': 'Dieses Trennen-Menü ist abgelaufen — /disconnect erneut ausführen',
   'cb.not_supported': 'Nicht unterstützt für {label}',
   'cb.unknown_agent': 'Unbekannter Agent',
   'cb.agent_switched': 'Gewechselt zu {label}',

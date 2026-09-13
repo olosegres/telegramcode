@@ -68,6 +68,7 @@ export const zhDict: Record<string, string> = {
     '*话题已绑定到 `{subdir}`。*\n' +
     '/claude /opencode — 启动代理\n' +
     '/connect — 连接 OpenCode provider API key（默认 OpenAI）\n' +
+    '/disconnect — 删除某个 provider 已保存的凭据\n' +
     '/terminal — 在此文件夹中打开 shell\n' +
     '/new — 重启会话（旧的 → /sessions）\n' +
     '/model /sessions — 切换\n' +
@@ -246,6 +247,32 @@ export const zhDict: Record<string, string> = {
 
   'model.saved_for_next_start': '模型已保存：{model} — 下次代理启动时应用。',
   'model.start_agent_first': '没有活跃会话。请先启动代理。',
+  'model.current_default': '默认',
+  'model.none_available': '🧠 当前：{current}\n\n没有可用模型。请用 /model <provider/model> 手动指定。',
+  'model.invalid_number': '❌ 编号无效。运行 /model 查看列表。',
+  'model.pick_provider': '🧠 当前：{current}\n\n选择一个提供商：',
+  'model.all_hidden': '🧠 当前：{current}\n\n所有提供商都已隐藏。点击 👁 恢复其中一个。',
+  'model.hidden_header': '🙈 已从此列表隐藏 — 点击 👁 恢复。',
+  'model.provider_button': '📦 {provider} ({count})',
+  'model.hidden_provider_button': '🙈 {provider} ({count})',
+  'model.hide_button': '🙈',
+  'model.show_button': '👁',
+  'model.back_button': '⬅️ 提供商',
+  'model.prev_button': '⬅️ 上一页',
+  'model.next_button': '下一页 ➡️',
+  'model.page_button': '{page}/{totalPages}',
+  'model.page_header': '🧠 {provider} — {count} 个模型 · 第 {page}/{totalPages} 页\n当前：{current}',
+  'model.page_hint': '回复编号即可选择，或用 /model <名称> 搜索。',
+  'model.page_hint_buttons_only': '点击模型即可切换，或用 /model <名称> 搜索。',
+
+  'disconnect.unsupported_backend': '此构建不支持断开 OpenCode provider 连接。',
+  'disconnect.invalid_provider': '❌ 提供商 id 无效：{provider}。示例：/disconnect openrouter',
+  'disconnect.no_providers': '没有可断开的提供商。',
+  'disconnect.pick_provider': '选择要断开的提供商 — 其已保存的凭据将被删除：',
+  'disconnect.provider_button': '🔌 {provider}',
+  'disconnect.success': '✅ 已断开提供商 {provider} — 已保存的凭据已删除。',
+  'disconnect.still_active_env': '⚠️ {provider} 的已保存凭据已删除，但它仍处于启用状态：OpenCode 通过环境变量启用它。请取消该变量并重启 OpenCode，或通过 /model 将其从列表中隐藏。',
+  'disconnect.failed': '⚠️ 断开 {provider} 失败：{reason}',
 
   'rename_session.usage': '用法：/rename_session <新标题>',
   'rename_session.start_agent_first': '没有活跃会话。请先启动代理（/claude 或 /opencode）。',
@@ -315,6 +342,10 @@ export const zhDict: Record<string, string> = {
   'cb.no_active_session': '没有活跃会话',
   'cb.model_error': '错误：{error}',
   'cb.model_set': '模型：{model}',
+  'cb.model_provider_gone': '该提供商已不存在 — 请重新运行 /model',
+  'cb.model_hidden': '已隐藏：{provider}',
+  'cb.model_shown': '已显示：{provider}',
+  'cb.disconnect_expired': '此断开菜单已过期 — 请重新运行 /disconnect',
   'cb.not_supported': '{label} 不支持',
   'cb.unknown_agent': '未知代理',
   'cb.agent_switched': '已切换到 {label}',

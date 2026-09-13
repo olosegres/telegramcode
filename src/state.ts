@@ -205,6 +205,18 @@ export interface StateV1 {
    */
   timestampThreads?: string[];
   /**
+   * Providers the operator hid from the `/model` picker, GLOBAL for the whole
+   * bot instance (not per-topic). The only lever that works for a provider
+   * OpenCode enables from an environment variable (`openrouter` ←
+   * `OPENROUTER_API_KEY`), which `DELETE /auth/:id` cannot remove. Hiding
+   * filters the PICKER only — an explicit `/model <provider/model>` still
+   * resolves a hidden provider, so a saved model pref never breaks. Same
+   * persistence shape as `tracedThreads` (deduped/sorted, dropped when empty)
+   * and equally lifecycle-independent: only `/model` mutates it, never session
+   * teardown. Optional so older state files stay valid.
+   */
+  hiddenModelProviders?: string[];
+  /**
    * Persisted scheduled jobs, keyed by {@link ScheduleRecord.id}. Optional so
    * older state files (created before the scheduler feature) stay valid —
    * `loadStateFile`'s shape check doesn't require it and a missing value is an
@@ -1136,6 +1148,33 @@ export class StateStore {
     const uniqueKeys = [...current].sort();
     if (uniqueKeys.length > 0) this.state.timestampThreads = uniqueKeys;
     else delete this.state.timestampThreads;
+    this.scheduleSave();
+  }
+
+  // ── hidden `/model` providers (global, not per-thread) ──
+
+  /**
+   * @description Providers currently hidden from the `/model` picker, in the
+   * stable sorted on-disk order. Empty when nothing is hidden (the default).
+   */
+  getHiddenModelProviders(): string[] {
+    return this.state.hiddenModelProviders?.slice() ?? [];
+  }
+
+  /**
+   * @description Hide/show one provider in the `/model` picker. Mirrors
+   * {@link setTimestampsEnabled}'s shape discipline: deduped + sorted so the
+   * on-disk form is stable across toggles, and an empty list is dropped (a
+   * default install leaves no trace in `state.json`). A picker preference is
+   * not crash-critical, so it rides the debounced save loop.
+   */
+  async setModelProviderHidden(provider: string, isHidden: boolean): Promise<void> {
+    const current = new Set(this.state.hiddenModelProviders ?? []);
+    if (isHidden) current.add(provider);
+    else current.delete(provider);
+    const uniqueProviders = [...current].sort();
+    if (uniqueProviders.length > 0) this.state.hiddenModelProviders = uniqueProviders;
+    else delete this.state.hiddenModelProviders;
     this.scheduleSave();
   }
 

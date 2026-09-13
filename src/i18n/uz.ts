@@ -68,6 +68,7 @@ export const uzDict: Record<string, string> = {
     '*Mavzu `{subdir}` ga bog‘langan.*\n' +
     '/claude /opencode — agentni boshlash\n' +
     '/connect — OpenCode provayder API kalitini ulash (default OpenAI)\n' +
+    '/disconnect — provayderning saqlangan hisob ma\'lumotlarini o\'chirish\n' +
     '/terminal — bu papkada shell ochish\n' +
     '/new — seansni qayta boshlash (eskisi → /sessions)\n' +
     '/model /sessions — almashtirish\n' +
@@ -246,6 +247,32 @@ export const uzDict: Record<string, string> = {
 
   'model.saved_for_next_start': 'Model saqlandi: {model} — keyingi agent boshlashda qo‘llanadi.',
   'model.start_agent_first': 'Faol seans yo‘q. Avval agentni boshlang.',
+  'model.current_default': 'standart',
+  'model.none_available': '🧠 Joriy: {current}\n\nMavjud model yo\'q. /model <provider/model> orqali qo\'lda tanlang.',
+  'model.invalid_number': '❌ Raqam noto\'g\'ri. Ro\'yxatni ko\'rish uchun /model ni ishga tushiring.',
+  'model.pick_provider': '🧠 Joriy: {current}\n\nProvayderni tanlang:',
+  'model.all_hidden': '🧠 Joriy: {current}\n\nBarcha provayderlar yashirilgan. Birini qaytarish uchun 👁 ni bosing.',
+  'model.hidden_header': '🙈 Bu ro\'yxatdan yashirilgan — qaytarish uchun 👁 ni bosing.',
+  'model.provider_button': '📦 {provider} ({count})',
+  'model.hidden_provider_button': '🙈 {provider} ({count})',
+  'model.hide_button': '🙈',
+  'model.show_button': '👁',
+  'model.back_button': '⬅️ provayderlar',
+  'model.prev_button': '⬅️ Oldingi',
+  'model.next_button': 'Keyingi ➡️',
+  'model.page_button': '{page}/{totalPages}',
+  'model.page_header': '🧠 {provider} — {count} ta model · sahifa {page}/{totalPages}\nJoriy: {current}',
+  'model.page_hint': 'Tanlash uchun raqam bilan javob bering yoki qidirish uchun /model <nom>.',
+  'model.page_hint_buttons_only': 'Almashtirish uchun modelni bosing yoki qidirish uchun /model <nom>.',
+
+  'disconnect.unsupported_backend': 'Bu buildda OpenCode provayderini uzish mavjud emas.',
+  'disconnect.invalid_provider': '❌ Provayder id noto\'g\'ri: {provider}. Masalan: /disconnect openrouter',
+  'disconnect.no_providers': 'Uziladigan provayder yo\'q.',
+  'disconnect.pick_provider': 'Uzish uchun provayderni tanlang — uning saqlangan hisob ma\'lumotlari o\'chiriladi:',
+  'disconnect.provider_button': '🔌 {provider}',
+  'disconnect.success': '✅ {provider} provayderi uzildi — saqlangan hisob ma\'lumotlari o\'chirildi.',
+  'disconnect.still_active_env': '⚠️ {provider} uchun saqlangan hisob ma\'lumotlari o\'chirildi, lekin u hali ham faol: OpenCode uni muhit o\'zgaruvchisi orqali yoqadi. O\'sha o\'zgaruvchini olib tashlang va OpenCode ni qayta ishga tushiring yoki /model orqali ro\'yxatdan yashiring.',
+  'disconnect.failed': '⚠️ {provider} ni uzib bo\'lmadi: {reason}',
 
   'rename_session.usage': 'Foydalanish: /rename_session <yangi sarlavha>',
   'rename_session.start_agent_first': 'Faol seans yo‘q. Avval agentni boshlang (/claude yoki /opencode).',
@@ -315,6 +342,10 @@ export const uzDict: Record<string, string> = {
   'cb.no_active_session': 'Faol seans yo‘q',
   'cb.model_error': 'Xato: {error}',
   'cb.model_set': 'Model: {model}',
+  'cb.model_provider_gone': 'Bu provayder endi yo\'q — /model ni qayta ishga tushiring',
+  'cb.model_hidden': 'Yashirildi: {provider}',
+  'cb.model_shown': 'Ko\'rsatildi: {provider}',
+  'cb.disconnect_expired': 'Bu uzish menyusi eskirdi — /disconnect ni qayta ishga tushiring',
   'cb.not_supported': '{label} uchun qo‘llab-quvvatlanmaydi',
   'cb.unknown_agent': 'Noma‘lum agent',
   'cb.agent_switched': '{label} ga almashtirildi',

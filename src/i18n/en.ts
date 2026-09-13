@@ -72,6 +72,7 @@ export const enDict: Record<string, string> = {
     '*Thread bound to `{subdir}`.*\n' +
     '/claude /opencode — start an agent\n' +
     '/connect — connect an OpenCode provider API key (OpenAI by default)\n' +
+    '/disconnect — remove a provider\'s stored credentials\n' +
     '/terminal — open a shell in this folder\n' +
     '/new — restart the session (old one → /sessions)\n' +
     '/model /sessions — switch\n' +
@@ -250,6 +251,32 @@ export const enDict: Record<string, string> = {
 
   'model.saved_for_next_start': 'Model saved: {model} — applies on next agent start.',
   'model.start_agent_first': 'No active session. Start an agent first.',
+  'model.current_default': 'default',
+  'model.none_available': '🧠 Current: {current}\n\nNo models available. Use /model <provider/model> to set one manually.',
+  'model.invalid_number': '❌ Invalid number. Run /model to see the list.',
+  'model.pick_provider': '🧠 Current: {current}\n\nPick a provider:',
+  'model.all_hidden': '🧠 Current: {current}\n\nEvery provider is hidden. Tap 👁 to bring one back.',
+  'model.hidden_header': '🙈 Hidden from this picker — tap 👁 to restore.',
+  'model.provider_button': '📦 {provider} ({count})',
+  'model.hidden_provider_button': '🙈 {provider} ({count})',
+  'model.hide_button': '🙈',
+  'model.show_button': '👁',
+  'model.back_button': '⬅️ providers',
+  'model.prev_button': '⬅️ Prev',
+  'model.next_button': 'Next ➡️',
+  'model.page_button': '{page}/{totalPages}',
+  'model.page_header': '🧠 {provider} — {count} models · page {page}/{totalPages}\nCurrent: {current}',
+  'model.page_hint': 'Reply with a number to pick, or /model <name> to search.',
+  'model.page_hint_buttons_only': 'Tap a model to switch, or /model <name> to search.',
+
+  'disconnect.unsupported_backend': 'OpenCode provider disconnect is not available in this build.',
+  'disconnect.invalid_provider': '❌ Invalid provider id {provider}. Example: /disconnect openrouter',
+  'disconnect.no_providers': 'No providers to disconnect.',
+  'disconnect.pick_provider': 'Pick a provider to disconnect — its stored credentials will be removed:',
+  'disconnect.provider_button': '🔌 {provider}',
+  'disconnect.success': '✅ Provider {provider} disconnected — stored credentials removed.',
+  'disconnect.still_active_env': '⚠️ Stored credentials for {provider} were removed, but it is still active: OpenCode enables it from an environment variable. Unset that variable and restart OpenCode to drop it, or hide it from the picker via /model.',
+  'disconnect.failed': '⚠️ Failed to disconnect {provider}: {reason}',
 
   'rename_session.usage': 'Usage: /rename_session <new title>',
   'rename_session.start_agent_first': 'No active session. Start an agent first (/claude or /opencode).',
@@ -320,6 +347,10 @@ export const enDict: Record<string, string> = {
   'cb.no_active_session': 'No active session',
   'cb.model_error': 'Error: {error}',
   'cb.model_set': 'Model: {model}',
+  'cb.model_provider_gone': 'That provider is gone — run /model again',
+  'cb.model_hidden': 'Hidden: {provider}',
+  'cb.model_shown': 'Shown: {provider}',
+  'cb.disconnect_expired': 'This disconnect menu expired — run /disconnect again',
   'cb.not_supported': 'Not supported for {label}',
   'cb.unknown_agent': 'Unknown agent',
   'cb.agent_switched': 'Switched to {label}',

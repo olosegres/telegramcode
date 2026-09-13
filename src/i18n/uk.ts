@@ -74,6 +74,7 @@ export const ukDict: Record<string, string> = {
     '*Тред прив\'язаний до `{subdir}`.*\n' +
     '/claude /opencode — запустити агента\n' +
     '/connect — підключити OpenCode provider API key (за замовчуванням OpenAI)\n' +
+    '/disconnect — видалити збережені ключі провайдера\n' +
     '/terminal — відкрити shell у цій папці\n' +
     '/new — перезапустити сесію (стара → /sessions)\n' +
     '/model /sessions — переключення\n' +
@@ -252,6 +253,32 @@ export const ukDict: Record<string, string> = {
 
   'model.saved_for_next_start': 'Модель збережено: {model} — застосується при старті агента.',
   'model.start_agent_first': 'Немає активної сесії. Спершу запусти агента.',
+  'model.current_default': 'за замовчуванням',
+  'model.none_available': '🧠 Поточна: {current}\n\nМоделей немає. Задай модель вручну: /model <provider/model>.',
+  'model.invalid_number': '❌ Невірний номер. Запусти /model, щоб побачити список.',
+  'model.pick_provider': '🧠 Поточна: {current}\n\nОбери провайдера:',
+  'model.all_hidden': '🧠 Поточна: {current}\n\nУсі провайдери приховані. Натисни 👁, щоб повернути одного з них.',
+  'model.hidden_header': '🙈 Приховано з цього списку — натисни 👁, щоб повернути.',
+  'model.provider_button': '📦 {provider} ({count})',
+  'model.hidden_provider_button': '🙈 {provider} ({count})',
+  'model.hide_button': '🙈',
+  'model.show_button': '👁',
+  'model.back_button': '⬅️ провайдери',
+  'model.prev_button': '⬅️ Назад',
+  'model.next_button': 'Далі ➡️',
+  'model.page_button': '{page}/{totalPages}',
+  'model.page_header': '🧠 {provider} — моделей: {count} · сторінка {page}/{totalPages}\nПоточна: {current}',
+  'model.page_hint': 'Відповідай номером, щоб обрати, або /model <назва> для пошуку.',
+  'model.page_hint_buttons_only': 'Натисни на модель, щоб перемкнути, або /model <назва> для пошуку.',
+
+  'disconnect.unsupported_backend': 'Відключення провайдерів OpenCode недоступне в цій збірці.',
+  'disconnect.invalid_provider': '❌ Невірний id провайдера {provider}. Приклад: /disconnect openrouter',
+  'disconnect.no_providers': 'Немає провайдерів для відключення.',
+  'disconnect.pick_provider': 'Обери провайдера для відключення — збережені облікові дані буде видалено:',
+  'disconnect.provider_button': '🔌 {provider}',
+  'disconnect.success': '✅ Провайдера {provider} відключено — збережені облікові дані видалено.',
+  'disconnect.still_active_env': '⚠️ Збережені облікові дані {provider} видалено, але провайдер усе ще активний: OpenCode вмикає його через змінну середовища. Прибери цю змінну та перезапусти OpenCode, або сховай провайдера в /model.',
+  'disconnect.failed': '⚠️ Не вдалося відключити {provider}: {reason}',
 
   'rename_session.usage': 'Використання: /rename_session <нова назва>',
   'rename_session.start_agent_first': 'Немає активної сесії. Спершу запусти агента (/claude чи /opencode).',
@@ -321,6 +348,10 @@ export const ukDict: Record<string, string> = {
   'cb.no_active_session': 'Немає активної сесії',
   'cb.model_error': 'Помилка: {error}',
   'cb.model_set': 'Модель: {model}',
+  'cb.model_provider_gone': 'Цього провайдера більше немає — запусти /model знову',
+  'cb.model_hidden': 'Приховано: {provider}',
+  'cb.model_shown': 'Показано: {provider}',
+  'cb.disconnect_expired': 'Це меню відключення застаріло — запусти /disconnect знову',
   'cb.not_supported': 'Не підтримується для {label}',
   'cb.unknown_agent': 'Невідомий агент',
   'cb.agent_switched': 'Переключено на {label}',

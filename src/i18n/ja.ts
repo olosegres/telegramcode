@@ -68,6 +68,7 @@ export const jaDict: Record<string, string> = {
     '*スレッドは `{subdir}` にバインドされています。*\n' +
     '/claude /opencode — エージェントを起動\n' +
     '/connect — OpenCode プロバイダー API key を接続（デフォルトは OpenAI）\n' +
+    '/disconnect — プロバイダーの保存済み認証情報を削除\n' +
     '/terminal — このフォルダでシェルを開く\n' +
     '/new — セッションを再起動（旧 → /sessions）\n' +
     '/model /sessions — 切り替え\n' +
@@ -246,6 +247,32 @@ export const jaDict: Record<string, string> = {
 
   'model.saved_for_next_start': 'モデルを保存: {model} — 次回エージェント起動時に適用されます。',
   'model.start_agent_first': 'アクティブなセッションがありません。先にエージェントを起動してください。',
+  'model.current_default': 'デフォルト',
+  'model.none_available': '🧠 現在: {current}\n\n利用できるモデルがありません。/model <provider/model> で手動設定してください。',
+  'model.invalid_number': '❌ 番号が無効です。/model を実行して一覧を確認してください。',
+  'model.pick_provider': '🧠 現在: {current}\n\nプロバイダーを選んでください:',
+  'model.all_hidden': '🧠 現在: {current}\n\nすべてのプロバイダーが非表示です。👁 をタップして戻してください。',
+  'model.hidden_header': '🙈 この一覧から非表示 — 👁 をタップで復元。',
+  'model.provider_button': '📦 {provider} ({count})',
+  'model.hidden_provider_button': '🙈 {provider} ({count})',
+  'model.hide_button': '🙈',
+  'model.show_button': '👁',
+  'model.back_button': '⬅️ プロバイダー',
+  'model.prev_button': '⬅️ 前へ',
+  'model.next_button': '次へ ➡️',
+  'model.page_button': '{page}/{totalPages}',
+  'model.page_header': '🧠 {provider} — モデル {count} 件 · ページ {page}/{totalPages}\n現在: {current}',
+  'model.page_hint': '番号で返信すると選択、/model <名前> で検索できます。',
+  'model.page_hint_buttons_only': 'モデルをタップすると切り替え、/model <名前> で検索できます。',
+
+  'disconnect.unsupported_backend': 'このビルドでは OpenCode プロバイダーの切断は利用できません。',
+  'disconnect.invalid_provider': '❌ プロバイダー id が無効です: {provider}。例: /disconnect openrouter',
+  'disconnect.no_providers': '切断できるプロバイダーがありません。',
+  'disconnect.pick_provider': '切断するプロバイダーを選んでください — 保存済みの認証情報が削除されます:',
+  'disconnect.provider_button': '🔌 {provider}',
+  'disconnect.success': '✅ プロバイダー {provider} を切断しました — 保存済みの認証情報を削除しました。',
+  'disconnect.still_active_env': '⚠️ {provider} の保存済み認証情報は削除しましたが、まだ有効です: OpenCode が環境変数から有効化しています。その変数を解除して OpenCode を再起動するか、/model で一覧から非表示にしてください。',
+  'disconnect.failed': '⚠️ {provider} の切断に失敗しました: {reason}',
 
   'rename_session.usage': '使い方: /rename_session <新しいタイトル>',
   'rename_session.start_agent_first': 'アクティブなセッションがありません。先にエージェントを起動してください（/claude または /opencode）。',
@@ -315,6 +342,10 @@ export const jaDict: Record<string, string> = {
   'cb.no_active_session': 'アクティブなセッションがありません',
   'cb.model_error': 'エラー: {error}',
   'cb.model_set': 'モデル: {model}',
+  'cb.model_provider_gone': 'そのプロバイダーはもうありません — /model を再実行してください',
+  'cb.model_hidden': '非表示: {provider}',
+  'cb.model_shown': '表示: {provider}',
+  'cb.disconnect_expired': 'この切断メニューは期限切れです — /disconnect を再実行してください',
   'cb.not_supported': '{label} ではサポートされていません',
   'cb.unknown_agent': '不明なエージェント',
   'cb.agent_switched': '{label} に切り替え',

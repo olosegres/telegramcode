@@ -89,6 +89,31 @@ import { classifyBoot } from './bootClassifier';
 import { defaultLocale, formatLanguageDisplay, localeCodes, normalizeLocale, runWithLocale, t, type Locale } from './i18n';
 import { buildLanguagePicker, languageAutoCallback } from './utils/languagePicker';
 import { validateSubdir, resolveBoundWorkDir, BindError, findAutobindSubdir, paginateBindList } from './validation';
+import { paginateList } from './utils/paginateList';
+import {
+  buildModelCatalog,
+  buildModelPickCallback,
+  buildProviderHideCallback,
+  buildProviderPageCallback,
+  buildProviderShowCallback,
+  checkHasProviderLevel,
+  getModelShortLabel,
+  modelPickCallbackRe,
+  modelPickerBackCallback,
+  modelPickerNoopCallback,
+  providerHideCallbackRe,
+  providerPageCallbackRe,
+  providerShowCallbackRe,
+  type ModelCatalog,
+} from './utils/modelPickerPlan';
+import {
+  buildDisconnectPickerKey,
+  buildDisconnectProviderCallback,
+  disconnectProviderCallbackRe,
+  getDisconnectPickerKeysForThread,
+  getDisconnectPickerProviderAt,
+  getEvictedDisconnectPickerKeys,
+} from './utils/providerDisconnectPlan';
 import { validateNewFolderName, NewFolderNameError } from './folderName';
 import {
   resolveThreadKeyForMode,
@@ -2034,6 +2059,23 @@ const pendingProviderConnects = new Map<string, PendingProviderConnect>();
 const connectMethodLists = new Map<string, { providerId: string; methods: OpenCodeAuthMethod[] }>();
 
 /**
+ * @description Snapshots of the bare-`/disconnect` pickers, keyed per picker
+ * MESSAGE (`buildDisconnectPickerKey`), holding the active provider ids in the
+ * order that message's buttons were rendered. The `dscp_<idx>` callback
+ * resolves its tap against ITS OWN message's snapshot rather than carrying the
+ * provider name (Telegram's 64-byte `callback_data` rule, same as
+ * {@link connectMethodLists}).
+ *
+ * Keyed per message, not per thread, because disconnect is DESTRUCTIVE: a
+ * second `/disconnect` leaves the first picker's buttons tappable forever, and
+ * a thread-keyed snapshot would resolve that old keyboard's index against the
+ * NEW list — deleting a different provider's credentials than the one the user
+ * tapped. Bounded by {@link disconnectPickerSnapshotLimit}; a thread's teardown
+ * drops all of its keys.
+ */
+const disconnectProviderLists = new Map<string, string[]>();
+
+/**
  * @description Per-thread "session-pick" arming flag. A thread is added here
  * by `/sessions` (or its `/resume` synonym) and removed when the user picks
  * a number, cancels, or sends non-numeric text. Only while a key is in this
@@ -2535,6 +2577,10 @@ function clearInMemoryThreadState(key: ThreadKey): void {
   awaitingSessionSelection.delete(k);
   pendingProviderConnects.delete(k);
   connectMethodLists.delete(k);
+  // Compound (thread + message) keys — drop every picker this thread rendered.
+  for (const pickerKey of getDisconnectPickerKeysForThread(disconnectProviderLists.keys(), k)) {
+    disconnectProviderLists.delete(pickerKey);
+  }
   awaitingFolderName.delete(k);
   pinnedStatusTextCache.delete(k);
   statusCoalescers.delete(k);
@@ -4511,19 +4557,6 @@ function getPromptWithThreadContext(key: ThreadKey, text: string): string {
 //  Model selection helper — used by /model and the numeric-reply flow
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function groupModelsByProvider(models: string[]): Map<string, string[]> {
-  const byProvider = new Map<string, string[]>();
-  for (const model of models) {
-    const slashIdx = model.indexOf('/');
-    if (slashIdx > 0) {
-      const provider = model.slice(0, slashIdx);
-      if (!byProvider.has(provider)) byProvider.set(provider, []);
-      byProvider.get(provider)!.push(model);
-    }
-  }
-  return byProvider;
-}
-
 function formatTimeAgo(date: Date): string {
   const diffMs = Date.now() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
@@ -5798,6 +5831,89 @@ command('connect', async (ctx, key) => {
   await showConnectMethodPicker(key, providerId);
 });
 
+/**
+ * @description The adapter that owns provider credentials.
+ *
+ * Provider auth is an OpenCode concept, so `/connect` and `/disconnect` BOTH
+ * target the OpenCode adapter directly instead of the thread's current
+ * backend — otherwise a topic that never started OpenCode could connect a
+ * provider (which `/connect` has always allowed) but not disconnect it, and
+ * the two are advertised side by side in the bound-thread help.
+ */
+export function getProviderAuthAdapter(): AgentAdapter {
+  return getAdapter('opencode');
+}
+
+/**
+ * @description Apply a `/disconnect` for one provider and report the outcome.
+ *
+ * The adapter's `null` means a clean disconnect; a non-null string is the
+ * notice to show verbatim — a failure, OR the honest caveat that the provider
+ * is still active because the backend enables it from an environment variable
+ * (the `openrouter` / `OPENROUTER_API_KEY` case that `DELETE /auth/:id` cannot
+ * touch, and the reason `/model` also has a bot-side hide toggle).
+ */
+async function applyProviderDisconnect(key: ThreadKey, providerId: string): Promise<void> {
+  const adapter = getProviderAuthAdapter();
+  if (!adapter.disconnectProvider) {
+    await replyToThread(key, t('disconnect.unsupported_backend'));
+    return;
+  }
+  const notice = await adapter.disconnectProvider(key, providerId);
+  await replyToThread(key, notice ?? t('disconnect.success', { provider: providerId }));
+}
+
+/**
+ * @description Bare `/disconnect` → one button per currently active provider.
+ * The provider list comes from OpenCode's live model catalog (a provider
+ * serving no models is not connected in any useful sense) and INCLUDES hidden
+ * ones — hiding is a picker preference, orthogonal to dropping credentials.
+ *
+ * The snapshot is stored under the SENT MESSAGE's id, so this keyboard can only
+ * ever resolve against the list it actually shows.
+ */
+async function showDisconnectProviderPicker(key: ThreadKey): Promise<void> {
+  const adapter = getProviderAuthAdapter();
+  if (!adapter.disconnectProvider) {
+    await replyToThread(key, t('disconnect.unsupported_backend'));
+    return;
+  }
+  const catalog = await getModelCatalog(adapter);
+  if (catalog.providers.length === 0) {
+    await replyToThread(key, t('disconnect.no_providers'));
+    return;
+  }
+  const buttons = catalog.providers.map((provider, index) =>
+    Markup.button.callback(
+      t('disconnect.provider_button', { provider }),
+      buildDisconnectProviderCallback(index),
+    ),
+  );
+  const messageId = await replyToThread(
+    key,
+    t('disconnect.pick_provider'),
+    Markup.inlineKeyboard(buttons, { columns: 1 }),
+  );
+  // A failed send has no keyboard to resolve against — recording the snapshot
+  // would only leak an entry.
+  if (messageId === null) return;
+  disconnectProviderLists.set(buildDisconnectPickerKey(keyToString(key), messageId), catalog.providers);
+  for (const evictedKey of getEvictedDisconnectPickerKeys(disconnectProviderLists.keys())) {
+    disconnectProviderLists.delete(evictedKey);
+  }
+}
+
+command('disconnect', async (ctx, key) => {
+  // No thread-adapter gate — `/connect` has none either; the unsupported-build
+  // guard lives where the provider-auth adapter is resolved.
+  const providerId = ctx.message.text.split(' ').slice(1).join(' ').trim();
+  if (!providerId) {
+    await showDisconnectProviderPicker(key);
+    return;
+  }
+  await applyProviderDisconnect(key, providerId);
+});
+
 /** Human label for a Claude backend name (the two adapters share `label`
  *  "Claude Code", so the picker/notices need a distinguishing name). */
 function getClaudeBackendLabel(name: string): string {
@@ -5883,62 +5999,379 @@ command('claude_mode', async (ctx, key) => {
   );
 });
 
-command('model', async (ctx, key) => {
-  const adapter = getThreadAdapter(key);
-  const args = ctx.message.text.split(' ').slice(1).join(' ').trim();
-  const kStr = keyToString(key);
+// ═══════════════════════════════════════════════════════════════════════════════
+//  /model — two-level provider → models picker
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  // numeric selection from a previous /model list
-  if (/^\d+$/.test(args)) {
-    const num = parseInt(args, 10);
-    const modelList = threadModelLists.get(kStr);
-    if (!modelList || num < 1 || num > modelList.length) {
-      await replyToThread(key, 'Invalid number. Run /model to see the list.');
+/**
+ * @description Models per page in the `/model` model level. Model names are
+ * long, so each gets a full-width row; 10 rows keep the keyboard scroll-free
+ * and the numbered text list ~10 short lines — far from Telegram's 4096-char
+ * message cap, which the old render-everything list blew past (12 990 chars on
+ * a 367-model `openrouter` catalog → every `/model` died with "message is too
+ * long" and the topic went silent).
+ */
+const MODEL_PAGE_SIZE = 10;
+
+/**
+ * @description Read the thread backend's model list and split it for the
+ * picker. Re-derived on every render (command AND callback) rather than
+ * snapshotted per thread — the same self-healing approach `bind_page` takes,
+ * and both adapters cache the underlying lookup.
+ *
+ * A backend without `getAvailableModels` (or a failing one) yields an empty
+ * catalog, which the caller turns into the "set it manually" notice.
+ */
+async function getModelCatalog(adapter: AgentAdapter): Promise<ModelCatalog> {
+  let models: string[] = [];
+  if (adapter.getAvailableModels) {
+    try {
+      models = await adapter.getAvailableModels();
+    } catch (e) {
+      console.error('[Bot] getAvailableModels:', e);
+    }
+  }
+  // Claude reports slash-less aliases (`sonnet`, `opus`, …) — they group under
+  // the adapter label, otherwise the picker would render an empty list.
+  return buildModelCatalog(models, adapter.label, state.getHiddenModelProviders());
+}
+
+/** Model label the thread currently runs, or the localized "default" stand-in. */
+function getCurrentModelLabel(adapter: AgentAdapter, key: ThreadKey): string {
+  return adapter.getCurrentModel?.(key) || t('model.current_default');
+}
+
+/**
+ * @description Arm the numbered-reply affordance for the page just rendered.
+ * Scoped to the CURRENT PAGE: `threadModelLists` holds that page's ids in
+ * button order, so a bare digit picks what the user is looking at.
+ */
+function armModelPagePick(key: ThreadKey, pageModels: string[]): void {
+  const kStr = keyToString(key);
+  threadModelLists.set(kStr, pageModels);
+  awaitingModelSelection.add(kStr);
+}
+
+/**
+ * @description Whether a bare digit in this thread is currently read as a
+ * `/model` page pick. Read-only probe, exported so the "a BUTTON pick must
+ * disarm the numbered affordance" rule is directly assertable in tests — an
+ * armed thread silently swallows a later ordinary "3" prompt.
+ */
+export function checkIsNumberedModelPickArmed(key: ThreadKey): boolean {
+  return awaitingModelSelection.has(keyToString(key));
+}
+
+/** Disarm the numbered-reply affordance — the provider level shows no numbers. */
+function clearModelPagePick(key: ThreadKey): void {
+  const kStr = keyToString(key);
+  threadModelLists.delete(kStr);
+  awaitingModelSelection.delete(kStr);
+}
+
+/**
+ * @description Resolve a numbered pick against the page the thread is currently
+ * looking at, and CONSUME the bare-digit affordance. `null` when the number
+ * addresses nothing on that page.
+ *
+ * The single resolver behind BOTH numbered entry points — `/model <n>` and the
+ * plain "3" reply — so the range check and the disarm cannot drift apart. The
+ * disarm is unconditional because an armed thread silently swallows a later
+ * ordinary "3" prompt as a model pick instead of forwarding it to the agent;
+ * `/model <n>` used to skip it entirely. The page list itself survives, so a
+ * follow-up `/model 4` still resolves against the list still on screen.
+ *
+ * Exported so that rule is directly assertable without a Telegram surface.
+ */
+export function getNumberedModelPick(key: ThreadKey, num: number): string | null {
+  const kStr = keyToString(key);
+  const pageModels = threadModelLists.get(kStr);
+  awaitingModelSelection.delete(kStr);
+  if (!pageModels || num < 1 || num > pageModels.length) return null;
+  return pageModels[num - 1];
+}
+
+/**
+ * @description Apply a numbered pick and reply — the shared tail of `/model <n>`
+ * and the plain "3" reply. Always replies (even for an adapter that cannot set a
+ * model), so both call sites can return unconditionally afterwards.
+ */
+async function applyNumberedModelPick(
+  adapter: AgentAdapter,
+  key: ThreadKey,
+  num: number,
+): Promise<void> {
+  const selected = getNumberedModelPick(key, num);
+  if (selected === null) {
+    await replyToThread(key, t('model.invalid_number'));
+    return;
+  }
+  const { message } = await applyModelSelection(adapter, key, selected);
+  await replyToThread(key, message);
+}
+
+/**
+ * @description Provider level: one row per provider, each with a 🙈 button that
+ * hides it from the picker. Hidden providers follow in their own section with a
+ * 👁 button to bring them back — the only way back, so they must always render.
+ */
+function buildModelProviderKeyboard(catalog: ModelCatalog) {
+  const hiddenProviderSet = new Set(catalog.hiddenProviders);
+  const visibleRows: ReturnType<typeof Markup.button.callback>[][] = [];
+  const hiddenRows: ReturnType<typeof Markup.button.callback>[][] = [];
+  catalog.providers.forEach((provider, providerIndex) => {
+    const count = catalog.byProvider.get(provider)?.length ?? 0;
+    if (hiddenProviderSet.has(provider)) {
+      hiddenRows.push([
+        Markup.button.callback(
+          t('model.hidden_provider_button', { provider, count }),
+          modelPickerNoopCallback,
+        ),
+        Markup.button.callback(t('model.show_button'), buildProviderShowCallback(providerIndex)),
+      ]);
       return;
     }
-    const selected = modelList[num - 1];
-    const { message } = await applyModelSelection(adapter, key, selected);
-    await replyToThread(key, message);
+    visibleRows.push([
+      Markup.button.callback(
+        t('model.provider_button', { provider, count }),
+        buildProviderPageCallback(providerIndex, 0),
+      ),
+      Markup.button.callback(t('model.hide_button'), buildProviderHideCallback(providerIndex)),
+    ]);
+  });
+  return Markup.inlineKeyboard([...visibleRows, ...hiddenRows]);
+}
+
+function buildModelProviderText(catalog: ModelCatalog, current: string): string {
+  // An EMPTY catalog is not "everything is hidden": there is no 👁 row to tap,
+  // so that copy would be a dead end. Reachable on the in-place re-render path
+  // (hide/show/«back») when the backend's model lookup comes back empty — e.g.
+  // a `/disconnect` dropped the last provider, or the CLI lookup failed right
+  // after `resetOpenCodeProviderCaches()` wiped the cache.
+  if (catalog.providers.length === 0) return t('model.none_available', { current });
+  if (catalog.visibleProviders.length === 0) return t('model.all_hidden', { current });
+  const header = t('model.pick_provider', { current });
+  return catalog.hiddenProviders.length > 0 ? `${header}\n\n${t('model.hidden_header')}` : header;
+}
+
+/** A ready-to-send (or ready-to-edit) render of one picker level. */
+export interface ModelPickerRender {
+  text: string;
+  keyboard: ReturnType<typeof Markup.inlineKeyboard>;
+  /** Model ids on this page, in button order — empty at the provider level. */
+  pageModels: string[];
+  /**
+   * Whether the rendered TEXT carries the numbered list. Paired with
+   * {@link applyModelPagePickArming} so the bare-digit affordance can only ever
+   * be armed for a page that actually SHOWS numbers — dead numbers that
+   * silently do nothing, or live numbers with no list, are both bugs.
+   */
+  isNumberedPickArmed: boolean;
+}
+
+/**
+ * @description Provider level (level 1) as a ready-to-send render. Exported so
+ * the "no render path can outgrow Telegram's message cap" guarantee — the whole
+ * point of the two-level picker — is assertable on THIS level too, not just on
+ * the paginated model level.
+ */
+export function buildModelProviderRender(catalog: ModelCatalog, current: string): ModelPickerRender {
+  return {
+    text: buildModelProviderText(catalog, current),
+    keyboard: buildModelProviderKeyboard(catalog),
+    pageModels: [],
+    isNumberedPickArmed: false,
+  };
+}
+
+/**
+ * @description Arm (or disarm) the bare-digit pick to match what the render
+ * actually shows. THE single choke point: a button pick re-renders its page
+ * WITHOUT numbers, and leaving `awaitingModelSelection` armed there made a
+ * later ordinary "3" prompt get swallowed as a model pick instead of reaching
+ * the agent.
+ */
+export function applyModelPagePickArming(key: ThreadKey, render: ModelPickerRender): void {
+  if (render.isNumberedPickArmed && render.pageModels.length > 0) {
+    armModelPagePick(key, render.pageModels);
+    return;
+  }
+  clearModelPagePick(key);
+}
+
+/** Render options for {@link buildModelPageRender}. */
+export interface ModelPageRenderOptions {
+  /**
+   * Include the numbered list in the message text. `false` for the re-render
+   * that follows a BUTTON pick: the bare-digit affordance is disarmed there, so
+   * printing numbers nothing responds to would be worse than printing none.
+   */
+  isWithNumberedList: boolean;
+}
+
+/**
+ * @description Model level: one page of a single provider's models.
+ *
+ * Returns `null` when the provider index no longer resolves (a stale keyboard
+ * after the catalog changed) or points at a HIDDEN provider — hiding must make
+ * a provider unreachable here, not just invisible one level up.
+ */
+export function buildModelPageRender(
+  catalog: ModelCatalog,
+  providerIndex: number,
+  page: number,
+  current: string,
+  options: ModelPageRenderOptions,
+): ModelPickerRender | null {
+  const provider = catalog.providers[providerIndex];
+  if (provider === undefined || catalog.hiddenProviders.includes(provider)) return null;
+  const providerModels = catalog.byProvider.get(provider) ?? [];
+  const { slice, currentPage, totalPages } = paginateList(providerModels, page, MODEL_PAGE_SIZE);
+  const firstIndexOnPage = currentPage * MODEL_PAGE_SIZE;
+
+  const rows = slice.map((modelId, offset) => {
+    const shortLabel = getModelShortLabel(modelId, provider);
+    return [
+      Markup.button.callback(
+        modelId === current ? `${shortLabel} ✓` : shortLabel,
+        buildModelPickCallback(providerIndex, firstIndexOnPage + offset),
+      ),
+    ];
+  });
+
+  if (totalPages > 1) {
+    const nav = [];
+    if (currentPage > 0) {
+      nav.push(Markup.button.callback(
+        t('model.prev_button'),
+        buildProviderPageCallback(providerIndex, currentPage - 1),
+      ));
+    }
+    nav.push(Markup.button.callback(
+      t('model.page_button', { page: currentPage + 1, totalPages }),
+      modelPickerNoopCallback,
+    ));
+    if (currentPage < totalPages - 1) {
+      nav.push(Markup.button.callback(
+        t('model.next_button'),
+        buildProviderPageCallback(providerIndex, currentPage + 1),
+      ));
+    }
+    rows.push(nav);
+  }
+  // No back row when the provider level was skipped — it would lead nowhere.
+  if (checkHasProviderLevel(catalog.visibleProviders.length, catalog.hiddenProviders.length)) {
+    rows.push([Markup.button.callback(t('model.back_button'), modelPickerBackCallback)]);
+  }
+
+  const header = t('model.page_header', {
+    provider,
+    count: providerModels.length,
+    page: currentPage + 1,
+    totalPages,
+    current,
+  });
+  const numberedList = options.isWithNumberedList
+    ? slice.map((modelId, offset) => `${offset + 1}. ${getModelShortLabel(modelId, provider)}`).join('\n')
+    : '';
+  const hint = options.isWithNumberedList ? t('model.page_hint') : t('model.page_hint_buttons_only');
+  const text = [header, numberedList, hint].filter((part) => part.length > 0).join('\n\n');
+
+  return {
+    text,
+    keyboard: Markup.inlineKeyboard(rows),
+    pageModels: slice,
+    isNumberedPickArmed: options.isWithNumberedList,
+  };
+}
+
+/**
+ * @description Open the `/model` picker as a NEW message. Starts at the model
+ * level when the catalog has a single offered provider (the Claude aliases),
+ * otherwise at the provider level.
+ */
+async function showModelPicker(key: ThreadKey, adapter: AgentAdapter): Promise<void> {
+  const current = getCurrentModelLabel(adapter, key);
+  const catalog = await getModelCatalog(adapter);
+  if (catalog.providers.length === 0) {
+    clearModelPagePick(key);
+    await replyToThread(key, t('model.none_available', { current }));
     return;
   }
 
-  // direct «/model provider/name»
+  const render = checkHasProviderLevel(catalog.visibleProviders.length, catalog.hiddenProviders.length)
+    ? buildModelProviderRender(catalog, current)
+    // Single offered provider → the provider level is a one-button detour;
+    // `providers` then holds exactly that one entry, hence index 0.
+    : buildModelPageRender(catalog, 0, 0, current, { isWithNumberedList: true });
+  if (!render) {
+    clearModelPagePick(key);
+    await replyToThread(key, t('model.none_available', { current }));
+    return;
+  }
+
+  applyModelPagePickArming(key, render);
+  await replyToThread(key, render.text, render.keyboard);
+}
+
+/**
+ * @description Id of the message a callback button sits on, or `null` when
+ * Telegram did not attach one (a very old message). Callbacks that resolve an
+ * INDEX against a per-message snapshot need it to reject a stale keyboard
+ * rather than resolve against another message's list.
+ */
+function getCallbackMessageId(ctx: Context): number | null {
+  return ctx.callbackQuery?.message?.message_id ?? null;
+}
+
+/**
+ * @description Swap a picker message to another level/page in place, keeping
+ * the thread clean. A no-op edit (same button tapped twice) comes back as
+ * Telegram's "message is not modified" 400, which is swallowed.
+ */
+async function editModelPickerMessage(
+  ctx: Context,
+  render: ModelPickerRender,
+): Promise<void> {
+  try {
+    await ctx.editMessageText(render.text, render.keyboard);
+  } catch (e) {
+    const desc = checkIsApiError(e) ? getErrorDescription(e) : '';
+    if (!/message is not modified/i.test(desc)) {
+      console.warn('[model picker] edit failed:', desc || e);
+    }
+  }
+}
+
+/** Re-render the provider level in place (after a hide/show toggle or «back»). */
+async function refreshModelProviderLevel(ctx: Context, key: ThreadKey): Promise<void> {
+  const adapter = getThreadAdapter(key);
+  const catalog = await getModelCatalog(adapter);
+  const render = buildModelProviderRender(catalog, getCurrentModelLabel(adapter, key));
+  applyModelPagePickArming(key, render);
+  await editModelPickerMessage(ctx, render);
+}
+
+command('model', async (ctx, key) => {
+  const adapter = getThreadAdapter(key);
+  const args = ctx.message.text.split(' ').slice(1).join(' ').trim();
+
+  // numeric selection from the last rendered page
+  if (/^\d+$/.test(args)) {
+    await applyNumberedModelPick(adapter, key, parseInt(args, 10));
+    return;
+  }
+
+  // direct «/model provider/name» — resolves a HIDDEN provider too: hiding
+  // filters the picker only and must never break an explicit pick or a saved
+  // model pref.
   if (args) {
     const { message } = await applyModelSelection(adapter, key, args);
     await replyToThread(key, message);
     return;
   }
 
-  // list flow
-  const current = adapter.getCurrentModel?.(key) || 'default';
-  let models: string[] = [];
-  if (adapter.getAvailableModels) {
-    try { models = await adapter.getAvailableModels(); } catch (e) {
-      console.error('[Bot] getAvailableModels:', e);
-    }
-  }
-  if (models.length === 0) {
-    await replyToThread(
-      key,
-      `Current: ${current}\n\nNo models available. Use /model <provider/model> to set manually.`,
-    );
-    return;
-  }
-  threadModelLists.set(kStr, models);
-  const byProvider = groupModelsByProvider(models);
-  let listText = `Current: ${current}\n\n`;
-  let num = 1;
-  for (const [provider, providerModels] of byProvider) {
-    listText += `📦 ${provider}:\n`;
-    for (const m of providerModels) {
-      listText += `  ${num}. ${m.slice(provider.length + 1)}\n`;
-      num++;
-    }
-    listText += '\n';
-  }
-  listText += 'Reply with number to select';
-  awaitingModelSelection.add(kStr);
-  await replyToThread(key, listText);
+  await showModelPicker(key, adapter);
 });
 
 /**
@@ -6834,7 +7267,7 @@ command('clear_messages', async (ctx, key) => {
 // agent.
 const botCommands = new Set([
   'start', 'claude', 'opencode', 'oc', 'terminal', 'agent', 'sessions', 'resume', 'cancel', 'model', 'connect',
-  'stop', 'stopall', 'stop-all', 'status', 'c', 'y', 'n', 'enter', 'up', 'down', 'tab', 'esc', 'escape', 'output', 'clear_messages',
+  'disconnect', 'stop', 'stopall', 'stop-all', 'status', 'c', 'y', 'n', 'enter', 'up', 'down', 'tab', 'esc', 'escape', 'output', 'clear_messages',
   'bind', 'unbind', 'where', 'ls', 'list', 'new', 'clear_session', 'whoami', 'version', 'help', 'language', 'lang',
   'doctor', 'mcp', 'rename_session', 'trace', 'timestamps', 'schedule', 'thinking', 'tool_results',
   'subagent', 'claude_mode', 'effort', 'verbosity', 'quit', 'q', 'quit-all', 'quitall', 'pair',
@@ -7001,24 +7434,14 @@ bot.on(message('text'), async (ctx) => {
   }
 
   // Numeric model selection after `/model`.
+  // Audit S12 / #20: previous code returned only when `adapter.setModel` was
+  // truthy; on adapters that don't implement it (legacy void return) execution
+  // fell through and the same numeric reply was re-processed as a
+  // natural-language start + forwarded to the agent. `applyNumberedModelPick`
+  // always replies (even for the unsupported case), so we always return after a
+  // numeric pick — the user clearly intended a model pick, not a prompt.
   if (/^\d+$/.test(text) && awaitingModelSelection.has(kStr)) {
-    const num = parseInt(text, 10);
-    const list = threadModelLists.get(kStr);
-    awaitingModelSelection.delete(kStr);
-    if (list && num >= 1 && num <= list.length) {
-      const selected = list[num - 1];
-      // Audit S12 / #20: previous code returned only when
-      // `adapter.setModel` was truthy; on adapters that don't implement
-      // it (legacy void return) execution fell through and the same
-      // numeric reply was re-processed as a natural-language start +
-      // forwarded to the agent. `applyModelSelection` always replies (even
-      // for the unsupported case), so we always return after a numeric pick
-      // — the user clearly intended a model pick, not a prompt.
-      const { message } = await applyModelSelection(adapter, key, selected);
-      await replyToThread(key, message);
-    } else {
-      await replyToThread(key, 'Invalid number. Run /model to see the list.');
-    }
+    await applyNumberedModelPick(adapter, key, parseInt(text, 10));
     return;
   }
 
@@ -7950,6 +8373,133 @@ bot.action(/^lang_(.+)$/, async (ctx) => {
   await state.setChatLocaleOverride(key.chatId, locale);
   await ctx.answerCbQuery();
   await confirmLanguageSelection(ctx);
+});
+
+/**
+ * @description `/model` picker callbacks — the two-level provider → models
+ * keyboard. All of them are registered BEFORE the generic `model_(.+)$`
+ * handler below (which is the legacy "pick this model id" button kept for
+ * back-compat) so no prefix can be mis-matched; Telegraf dispatches action
+ * regexes first-match-wins, the same ordering rule `bind_page_(\d+)$` relies on.
+ */
+
+// Provider tapped (or a page arrow) → render that provider's model page.
+bot.action(providerPageCallbackRe, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  const adapter = getThreadAdapter(key);
+  const catalog = await getModelCatalog(adapter);
+  const render = buildModelPageRender(
+    catalog,
+    Number(ctx.match[1]),
+    Number(ctx.match[2]),
+    getCurrentModelLabel(adapter, key),
+    { isWithNumberedList: true },
+  );
+  if (!render) { await ctx.answerCbQuery(t('cb.model_provider_gone')); return; }
+  applyModelPagePickArming(key, render);
+  await editModelPickerMessage(ctx, render);
+  await ctx.answerCbQuery();
+});
+
+// Model tapped → same apply path as `/model <name>` and the numeric reply.
+bot.action(modelPickCallbackRe, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  const adapter = getThreadAdapter(key);
+  if (!adapter.setModel) {
+    await ctx.answerCbQuery(t('cb.not_supported', { label: adapter.label }));
+    return;
+  }
+  const catalog = await getModelCatalog(adapter);
+  const providerIndex = Number(ctx.match[1]);
+  const modelIndex = Number(ctx.match[2]);
+  const provider = catalog.providers[providerIndex];
+  const modelId = provider === undefined
+    ? undefined
+    : catalog.byProvider.get(provider)?.[modelIndex];
+  if (modelId === undefined) { await ctx.answerCbQuery(t('cb.model_provider_gone')); return; }
+
+  const { isOk, message, setModelError, displayLabel } = await applyModelSelection(adapter, key, modelId);
+  if (!isOk) {
+    await ctx.answerCbQuery(t('cb.model_error', { error: (setModelError ?? message).slice(0, 50) }));
+    return;
+  }
+  await ctx.answerCbQuery(t('cb.model_set', { model: displayLabel.split('/').pop() || displayLabel }));
+
+  // The pick is made, so the page's bare-digit affordance must go (an armed
+  // thread swallows a later ordinary "3" prompt) — and with it the numbers in
+  // the text. Re-render the SAME page so the ✓ moves to the model just picked.
+  const refreshed = buildModelPageRender(
+    catalog,
+    providerIndex,
+    Math.floor(modelIndex / MODEL_PAGE_SIZE),
+    getCurrentModelLabel(adapter, key),
+    { isWithNumberedList: false },
+  );
+  if (refreshed) {
+    applyModelPagePickArming(key, refreshed);
+    await editModelPickerMessage(ctx, refreshed);
+  } else {
+    clearModelPagePick(key);
+  }
+  await replyToThread(key, message);
+});
+
+// 🙈 / 👁 — the bot-side provider filter. GLOBAL for the instance and the only
+// lever that works for a provider OpenCode enables from an environment
+// variable, which `/disconnect` cannot remove.
+bot.action(providerHideCallbackRe, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  const catalog = await getModelCatalog(getThreadAdapter(key));
+  const provider = catalog.providers[Number(ctx.match[1])];
+  if (provider === undefined) { await ctx.answerCbQuery(t('cb.model_provider_gone')); return; }
+  await state.setModelProviderHidden(provider, true);
+  await ctx.answerCbQuery(t('cb.model_hidden', { provider }));
+  await refreshModelProviderLevel(ctx, key);
+});
+
+bot.action(providerShowCallbackRe, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  const catalog = await getModelCatalog(getThreadAdapter(key));
+  const provider = catalog.providers[Number(ctx.match[1])];
+  if (provider === undefined) { await ctx.answerCbQuery(t('cb.model_provider_gone')); return; }
+  await state.setModelProviderHidden(provider, false);
+  await ctx.answerCbQuery(t('cb.model_shown', { provider }));
+  await refreshModelProviderLevel(ctx, key);
+});
+
+// «⬅️ providers» — back to the provider level.
+bot.action(modelPickerBackCallback, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  await ctx.answerCbQuery();
+  await refreshModelProviderLevel(ctx, key);
+});
+
+// Inert label buttons (the "2/5" page pill, a hidden provider's name).
+bot.action(modelPickerNoopCallback, async (ctx) => {
+  await ctx.answerCbQuery();
+});
+
+// Bare-`/disconnect` picker row → drop that provider's stored credentials.
+// Resolved against the snapshot of the message the button sits on, so an older
+// picker left in the history can never map its index onto a newer list and
+// delete the wrong provider's credentials.
+bot.action(disconnectProviderCallbackRe, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  const provider = getDisconnectPickerProviderAt(
+    disconnectProviderLists,
+    keyToString(key),
+    getCallbackMessageId(ctx),
+    Number(ctx.match[1]),
+  );
+  if (provider === null) { await ctx.answerCbQuery(t('cb.disconnect_expired')); return; }
+  await ctx.answerCbQuery();
+  await applyProviderDisconnect(key, provider);
 });
 
 bot.action(/^model_(.+)$/, async (ctx) => {
@@ -9682,7 +10232,7 @@ function handleAgentStopped(key: ThreadKey): void {
 //  Startup orchestration — state init, re-attach, setMyCommands, launch
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const COMMANDS_MENU = [
+export const COMMANDS_MENU = [
   { command: 'help', description: '❓ Context-aware help' },
   { command: 'doctor', description: '🔍 Self-diagnostics' },
   { command: 'bind', description: '📁 Bind thread to a subfolder' },
@@ -9692,6 +10242,7 @@ const COMMANDS_MENU = [
   { command: 'claude', description: '▶️ Start Claude Code' },
   { command: 'opencode', description: '▶️ Start OpenCode' },
   { command: 'connect', description: '🔑 Connect an OpenCode provider API key' },
+  { command: 'disconnect', description: '🔌 Disconnect an OpenCode provider' },
   { command: 'terminal', description: '🖥 Open a raw shell in the bound folder' },
   { command: 'claude_mode', description: '🔀 Claude backend: tmux-scrape ⇄ json-stream' },
   { command: 'new', description: '🆕 Restart session (alias /clear_session)' },

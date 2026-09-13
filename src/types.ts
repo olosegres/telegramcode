@@ -823,6 +823,19 @@ export interface AgentAdapter extends EventEmitter {
   connectProvider?(key: ThreadKey, providerId: string, apiKey: string): Promise<string | null>;
 
   /**
+   * Disconnect a provider: remove the credentials this backend stores for it.
+   * Same return convention as {@link connectProvider} — `null` means a clean
+   * disconnect (the caller shows its own success copy), a non-null string is a
+   * user-facing notice to show verbatim. The notice covers BOTH a failure and
+   * the honest-caveat case: a provider the backend enables from an environment
+   * variable stays active after its stored credentials are gone.
+   *
+   * Optional (optional-method pattern): OpenCode implements provider auth;
+   * Claude/Terminal do not.
+   */
+  disconnectProvider?(key: ThreadKey, providerId: string): Promise<string | null>;
+
+  /**
    * Fetch a provider's auth methods for the `/connect` method picker. OpenCode
    * returns custom OAuth methods from its auth catalog and a generic API-key
    * method for ordinary providers in its full provider catalog.

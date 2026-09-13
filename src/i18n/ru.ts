@@ -72,6 +72,7 @@ export const ruDict: Record<string, string> = {
     '*Тред привязан к `{subdir}`.*\n' +
     '/claude /opencode — старт агента\n' +
     '/connect — подключить OpenCode provider API key (по умолчанию OpenAI)\n' +
+    '/disconnect — удалить сохранённые ключи провайдера\n' +
     '/terminal — открыть shell в этой папке\n' +
     '/new — перезапустить сессию (старая → /sessions)\n' +
     '/model /sessions — переключение\n' +
@@ -250,6 +251,32 @@ export const ruDict: Record<string, string> = {
 
   'model.saved_for_next_start': 'Модель сохранена: {model} — применится при старте агента.',
   'model.start_agent_first': 'Нет активной сессии. Сначала запусти агента.',
+  'model.current_default': 'по умолчанию',
+  'model.none_available': '🧠 Текущая: {current}\n\nСписок моделей пуст. Задай модель вручную: /model <provider/model>.',
+  'model.invalid_number': '❌ Неверный номер. Запусти /model, чтобы увидеть список.',
+  'model.pick_provider': '🧠 Текущая: {current}\n\nВыбери провайдера:',
+  'model.all_hidden': '🧠 Текущая: {current}\n\nВсе провайдеры скрыты. Нажми 👁, чтобы вернуть один из них.',
+  'model.hidden_header': '🙈 Скрыто из этого списка — нажми 👁, чтобы вернуть.',
+  'model.provider_button': '📦 {provider} ({count})',
+  'model.hidden_provider_button': '🙈 {provider} ({count})',
+  'model.hide_button': '🙈',
+  'model.show_button': '👁',
+  'model.back_button': '⬅️ провайдеры',
+  'model.prev_button': '⬅️ Назад',
+  'model.next_button': 'Вперёд ➡️',
+  'model.page_button': '{page}/{totalPages}',
+  'model.page_header': '🧠 {provider} — моделей: {count} · страница {page}/{totalPages}\nТекущая: {current}',
+  'model.page_hint': 'Ответь номером, чтобы выбрать, или /model <название> для поиска.',
+  'model.page_hint_buttons_only': 'Нажми на модель, чтобы переключиться, или /model <название> для поиска.',
+
+  'disconnect.unsupported_backend': 'Отключение провайдеров OpenCode недоступно в этой сборке.',
+  'disconnect.invalid_provider': '❌ Неверный id провайдера {provider}. Пример: /disconnect openrouter',
+  'disconnect.no_providers': 'Нет провайдеров для отключения.',
+  'disconnect.pick_provider': 'Выбери провайдера для отключения — сохранённые учётные данные будут удалены:',
+  'disconnect.provider_button': '🔌 {provider}',
+  'disconnect.success': '✅ Провайдер {provider} отключён — сохранённые учётные данные удалены.',
+  'disconnect.still_active_env': '⚠️ Сохранённые учётные данные {provider} удалены, но провайдер всё ещё активен: OpenCode включает его через переменную окружения. Убери эту переменную и перезапусти OpenCode, либо скрой провайдера в /model.',
+  'disconnect.failed': '⚠️ Не удалось отключить {provider}: {reason}',
 
   'rename_session.usage': 'Использование: /rename_session <новое название>',
   'rename_session.start_agent_first': 'Нет активной сессии. Сначала запусти агента (/claude или /opencode).',
@@ -319,6 +346,10 @@ export const ruDict: Record<string, string> = {
   'cb.no_active_session': 'Нет активной сессии',
   'cb.model_error': 'Ошибка: {error}',
   'cb.model_set': 'Модель: {model}',
+  'cb.model_provider_gone': 'Провайдера больше нет — запусти /model заново',
+  'cb.model_hidden': 'Скрыт: {provider}',
+  'cb.model_shown': 'Показан: {provider}',
+  'cb.disconnect_expired': 'Это меню отключения устарело — запусти /disconnect заново',
   'cb.not_supported': 'Не поддерживается для {label}',
   'cb.unknown_agent': 'Неизвестный агент',
   'cb.agent_switched': 'Переключено на {label}',

@@ -484,6 +484,9 @@ config/variants, not a per-message API field).
 | `utils/claudeRelayRouting.ts` | Pure per-pref router for the classifier's segments (S4–S6): `routeClaudeChunkSegments` keeps prose always, applies `/tool_results` + `/thinking` per segment (full keep / short truncate-or-collapse / minimal fold), always folds sub-agent panel previews to status, and returns `keptText` (permanent) + the one rolling `activityLine`; `checkIsClaudeRelayFastPath` is the all-`full` byte-identical regression anchor |
 | `utils/claudeSubagentTail.ts` | Pure decision logic for Claude's `/subagent full` transcript tailing: per-file tail state (byte offset + partial-line carry), the scan planner (`getSubagentTailReads`: first scan seeds offsets to EOF with no reads = no backlog replay; non-`full` modes fast-forward without reading; full returns `[offset..size)` ranges), the transcript filename filter (`checkIsSubagentTranscriptName`), and the extractor (`extractAppendedSubagentTexts`: assistant `text` blocks only — thinking/tool_use/user/attachment dropped, malformed JSONL lines skipped). The adapter's poll tick does the fs work |
 | `utils/canonicalPathContainment.ts` | Shared security boundary for binding and file-send path resolution: canonicalizes a candidate beneath an already-canonical/pinned root and performs separator-safe containment, while each caller retains its own input validation, root error mapping, and file-vs-directory gate |
+| `utils/paginateList.ts` | The generic pagination core shared by every inline-keyboard picker: `paginateList(items, page, pageSize)` (slice + clamp a stale/over-range page to the last real one, ≥1 page even when empty). `validation.ts`'s `paginateBindList` is now a thin wrapper over it |
+| `utils/modelPickerPlan.ts` | Pure layer behind the two-level `/model` picker: `buildModelCatalog` (group + visibility partition in one pass; the bot's `getModelCatalog` only adds the adapter fetch + the persisted hidden-provider read), `groupModelsByProvider(models, fallbackProvider)` (first-`/` segment; slash-less ids group under the adapter label so Claude's aliases aren't dropped), `getProviderVisibility` (visible/hidden split), `checkHasProviderLevel` (skip level 1 for a lone provider), `getModelShortLabel`, and the INDEX-based callback codec (`mdlp_`/`mdl_`/`mdlhide_`/`mdlshow_`/`mdlback`/`mdlnoop` builders + parsers + `checkIsCallbackDataWithinLimit` against Telegram's 64-BYTE `callback_data` cap) |
+| `utils/providerDisconnectPlan.ts` | Pure decision behind `/disconnect`: `getProviderDisconnectOutcome(providerId, activeIdsAfterDelete)` → `removed` vs `stillActiveViaEnv` (a provider still listed after `DELETE /auth/:id` comes from an environment variable the bot cannot unset), the `dscp_<idx>` picker callback codec, and the per-MESSAGE picker-snapshot keying (`buildDisconnectPickerKey`, `getDisconnectPickerProviderAt`, `getDisconnectPickerKeysForThread`, `getEvictedDisconnectPickerKeys`) that stops an older keyboard from resolving its index against a newer list |
 | `utils/fileSendPlan.ts` | Pure decision/request layer for the agent→Telegram `send_file_to_user`: path-safety (`resolveSendFileWithinDir` — shared canonical containment + bigint device/inode identity + regular-file gate inside the bound folder), canonical multipart-basename control/quoted-string-metacharacter sanitization (`getTelegramUploadFilename`), extension→render-kind (`classifyFileSendKind`: photo/animation/video/document), the single/album plan (`planFileSend`: `as_file` + >10MB-photo→document downgrade, eligible photos/videos→albumPhotoVideo else albumDocument, size/count → error variant), and `buildTelegramFileSendRequest` (exact `sendPhoto`/`sendAnimation`/`sendVideo`/`sendDocument` or discriminated `sendMediaGroup` request carrying project-owned descriptor snapshots, first-item-only album caption) + `trimCaption` (1024 cap) |
 | `utils/abortableFifo.ts` | Shared abortable FIFO waiter queue used by both the global send pacer and file-snapshot admission: size, wait, resolve-next, and resolve-all; an aborted waiter removes only itself and never consumes the next live permit |
 | `utils/fileSendService.ts` | Reusable impure orchestration for `send_file_to_user`: `createSendFilesToThread(deps)` resolves target+workdir, pins one canonical root for the whole operation, and on Linux traverses each canonical path from a root descriptor with per-component `O_NOFOLLOW`; macOS fails closed until a native descriptor-relative bridge exists. It verifies the opened regular file's bigint device/inode identity and ≤50 MB size, then retains every file descriptor while classifying/planning/building and exhaustively invoking an injected typed `sendPhoto`/`sendAnimation`/`sendVideo`/`sendDocument`/`sendMediaGroup` gateway. Snapshot admission is bounded/FIFO and abortable; a directory-scoped call requires the same canonical authorised workdir both before opening and inside `executeDelivery` immediately before dispatch. Optional `executeDelivery` wraps gateway dispatch plus durable message-id recording in one queue/retry transaction; the default invokes directly. It closes every collected descriptor in `finally` after gateway success/failure. A gateway return is the delivery boundary: later recording/cleanup failures append warnings to an `ok:true` result to prevent duplicate retries, while `FileSendDeliveryUnknownError` becomes a distinct no-auto-retry result. `SchedulerMcpDeps` imports its `SendFilesToThread` type directly; real-HTTP tests compose a recording gateway |
@@ -640,7 +643,8 @@ OpenCode events / bindings).
     (already-exists → just bind to it), then bound via `applyBinding` with the
     normal welcome stack. Invalid name → error, mode stays armed for retry.
     Any command exits the mode. `/bind <subdir>` direct form is unchanged.
-- **Agent control (proxied):** `/model`, `/effort`, `/verbosity`, `/thinking`,
+- **Agent control (proxied):** `/model`, `/connect`, `/disconnect`, `/effort`,
+  `/verbosity`, `/thinking`,
   `/tool_results`, `/subagent`, `/output`, `/schedule`, `/claude_mode`, and raw TUI
   keys `/c`, `/y`, `/n`, `/enter`, `/up`, `/down`, `/tab`, `/esc` (`/escape`)
   - `/claude_mode [json|tmux]` switches THIS topic's Claude Code backend between
@@ -735,6 +739,74 @@ OpenCode events / bindings).
       restart drops the in-flight login, which is correct). Pure parse/decision
       helpers in `utils/claudeAuthLogin.ts`; impure pty driver + state in
       `bot.ts`.
+  - `/model` is a TWO-LEVEL inline picker: providers first, then that
+    provider's models paginated at `MODEL_PAGE_SIZE` (10, one per row). The
+    message TEXT stays short — the list rides the buttons. This is the fix for
+    the live 4096-char failure: once the operator's OpenCode gained
+    `openrouter` (367 models) the old render-everything message was 12 990
+    chars, `sendMessage` returned `400 … message is too long`, and the topic
+    went silent. Model ids blow past Telegram's 64-BYTE `callback_data` cap, so
+    every picker callback carries INDEXES (`mdlp_<providerIdx>_<page>`,
+    `mdl_<providerIdx>_<modelIdx>`, `mdlhide_`/`mdlshow_`, `mdlback`,
+    `mdlnoop`) — the same trick as `connm_<idx>` / `resume_<idx>`. Grouping is
+    by the first `/` segment with a FALLBACK group under the adapter label for
+    slash-less ids (Claude reports `sonnet`/`opus`/`haiku`; the old slash-only
+    grouping printed an EMPTY list on Claude topics). A single offered provider
+    skips level 1. The numbered-text affordance survives but is scoped to the
+    CURRENT PAGE (`threadModelLists` holds that page). `/model
+    <provider/model>` and the legacy `model_<id>` button are unchanged. Pure
+    helpers: `utils/modelPickerPlan.ts` (catalog assembly, grouping, visibility
+    split, callback codec) + `utils/paginateList.ts` (the pagination core
+    `paginateBindList` now wraps).
+    - **The numbered list and the bare-digit arming are ONE decision.** A page
+      render carries `isNumberedPickArmed`, and `applyModelPagePickArming` is
+      the single choke point that arms/disarms from it — so numbers can never
+      be printed without a live affordance, nor the affordance left armed
+      without numbers. After a BUTTON pick the page is re-rendered with
+      `isWithNumberedList: false` (✓ moved to the new model) and the thread is
+      DISARMED: leaving it armed made a later ordinary "3" prompt get swallowed
+      as a model pick instead of reaching the agent. A NUMBERED pick consumes
+      the affordance the same way, through the one resolver
+      (`getNumberedModelPick`) behind BOTH numbered entry points — `/model <n>`
+      and the plain "3" reply — valid number or not; the page list itself is
+      kept so a follow-up `/model 4` still resolves against what is on screen.
+      An EMPTY catalog on the in-place re-render path renders the
+      "no models available" copy, never "everything is hidden" (there would be
+      no 👁 row to tap — a dead end).
+  - **Hidden providers** — each provider row in the picker carries a 🙈 that
+    hides it (and a 👁 section below to bring it back). The list is GLOBAL for
+    the bot instance, persisted as `state.json` `hiddenModelProviders`
+    (deduped/sorted, dropped when empty, lifecycle-independent — mirrors
+    `tracedThreads`). Hiding filters the PICKER only: an explicit `/model
+    <provider/model>` still resolves a hidden provider, so a saved model pref
+    never breaks. It is the only lever that works for a provider OpenCode
+    enables from an env var, which `/disconnect` cannot remove.
+  - `/disconnect [provider]` removes a provider's STORED credentials
+    (OpenCode: `DELETE /auth/:id`, then `resetOpenCodeProviderCaches()`). Bare
+    `/disconnect` shows an index-based picker of the active providers. After
+    the delete the adapter re-reads `GET /config/providers`: a provider still
+    listed is supplied by an ENVIRONMENT VARIABLE (`openrouter` ←
+    `OPENROUTER_API_KEY`) and gets an honest "credentials removed but still
+    active — unset the variable or hide it in `/model`" notice instead of a
+    false success. Decision helper: `utils/providerDisconnectPlan.ts`.
+    - **Provider auth is NOT thread-scoped.** `/disconnect` resolves its
+      adapter via `getProviderAuthAdapter()` → `getAdapter('opencode')`, the
+      same hardcoded resolution `/connect` uses — resolving it from the THREAD
+      made a Claude topic able to `/connect` a provider but not disconnect it,
+      while the bound-thread help advertises the pair side by side. The
+      unsupported-build guard (`disconnect.unsupported_backend`, no `{label}`)
+      sits where the adapter is resolved, mirroring `connect.unsupported_backend`.
+    - **The picker snapshot is keyed per MESSAGE, not per thread**
+      (`buildDisconnectPickerKey(threadKey, messageId)`). Disconnect is
+      destructive and an older picker's buttons stay tappable forever: a
+      thread-keyed snapshot let a second `/disconnect` overwrite the first, so
+      tapping "openai" (index 1) on the OLD keyboard resolved index 1 against
+      the NEW list and deleted a DIFFERENT provider's credentials. A tap whose
+      own message has no snapshot answers "expired" rather than resolving
+      against someone else's list (`getDisconnectPickerProviderAt`). Thread
+      teardown sweeps all of a thread's compound keys (digit-suffix match — a
+      bare prefix test would let topic `1` wipe topic `12`'s picker), and the
+      store is capped at `disconnectPickerSnapshotLimit`.
   - `/model` picked with NO running session persists as the thread pref and
     applies on the next agent start (OpenCode; Claude refuses — its model
     switch is a TUI keystroke with nothing to persist).

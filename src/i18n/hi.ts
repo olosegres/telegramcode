@@ -68,6 +68,7 @@ export const hiDict: Record<string, string> = {
     '*थ्रेड `{subdir}` से बाउंड है।*\n' +
     '/claude /opencode — एजेंट शुरू करें\n' +
     '/connect — OpenCode प्रदाता API कुंजी कनेक्ट करें (डिफ़ॉल्ट OpenAI)\n' +
+    '/disconnect — किसी प्रदाता के सहेजे गए क्रेडेंशियल हटाएँ\n' +
     '/terminal — इस फ़ोल्डर में शेल खोलें\n' +
     '/new — सत्र पुनः प्रारंभ करें (पुराना → /sessions)\n' +
     '/model /sessions — स्विच\n' +
@@ -246,6 +247,32 @@ export const hiDict: Record<string, string> = {
 
   'model.saved_for_next_start': 'मॉडल सहेजा गया: {model} — अगली एजेंट शुरुआत पर लागू।',
   'model.start_agent_first': 'कोई सक्रिय सत्र नहीं। पहले एक एजेंट शुरू करें।',
+  'model.current_default': 'डिफ़ॉल्ट',
+  'model.none_available': '🧠 वर्तमान: {current}\n\nकोई मॉडल उपलब्ध नहीं है। /model <provider/model> से मैन्युअल रूप से सेट करें।',
+  'model.invalid_number': '❌ अमान्य संख्या। सूची देखने के लिए /model चलाएँ।',
+  'model.pick_provider': '🧠 वर्तमान: {current}\n\nएक प्रदाता चुनें:',
+  'model.all_hidden': '🧠 वर्तमान: {current}\n\nसभी प्रदाता छिपे हुए हैं। किसी एक को वापस लाने के लिए 👁 दबाएँ।',
+  'model.hidden_header': '🙈 इस सूची से छिपाया गया — वापस लाने के लिए 👁 दबाएँ।',
+  'model.provider_button': '📦 {provider} ({count})',
+  'model.hidden_provider_button': '🙈 {provider} ({count})',
+  'model.hide_button': '🙈',
+  'model.show_button': '👁',
+  'model.back_button': '⬅️ प्रदाता',
+  'model.prev_button': '⬅️ पिछला',
+  'model.next_button': 'अगला ➡️',
+  'model.page_button': '{page}/{totalPages}',
+  'model.page_header': '🧠 {provider} — {count} मॉडल · पृष्ठ {page}/{totalPages}\nवर्तमान: {current}',
+  'model.page_hint': 'चुनने के लिए संख्या भेजें, या खोजने के लिए /model <नाम>।',
+  'model.page_hint_buttons_only': 'बदलने के लिए किसी मॉडल पर टैप करें, या खोजने के लिए /model <नाम>।',
+
+  'disconnect.unsupported_backend': 'इस बिल्ड में OpenCode प्रदाता डिस्कनेक्ट उपलब्ध नहीं है।',
+  'disconnect.invalid_provider': '❌ अमान्य प्रदाता id {provider}। उदाहरण: /disconnect openrouter',
+  'disconnect.no_providers': 'डिस्कनेक्ट करने के लिए कोई प्रदाता नहीं।',
+  'disconnect.pick_provider': 'डिस्कनेक्ट करने के लिए प्रदाता चुनें — उसके सहेजे गए क्रेडेंशियल हटा दिए जाएँगे:',
+  'disconnect.provider_button': '🔌 {provider}',
+  'disconnect.success': '✅ प्रदाता {provider} डिस्कनेक्ट हुआ — सहेजे गए क्रेडेंशियल हटा दिए गए।',
+  'disconnect.still_active_env': '⚠️ {provider} के सहेजे गए क्रेडेंशियल हटा दिए गए, लेकिन वह अब भी सक्रिय है: OpenCode उसे एक एनवायरनमेंट वेरिएबल से सक्षम करता है। उस वेरिएबल को हटाकर OpenCode पुनः आरंभ करें, या /model से उसे सूची में छिपा दें।',
+  'disconnect.failed': '⚠️ {provider} डिस्कनेक्ट नहीं हो सका: {reason}',
 
   'rename_session.usage': 'उपयोग: /rename_session <नया शीर्षक>',
   'rename_session.start_agent_first': 'कोई सक्रिय सत्र नहीं। पहले एक एजेंट शुरू करें (/claude या /opencode)।',
@@ -315,6 +342,10 @@ export const hiDict: Record<string, string> = {
   'cb.no_active_session': 'कोई सक्रिय सत्र नहीं',
   'cb.model_error': 'त्रुटि: {error}',
   'cb.model_set': 'मॉडल: {model}',
+  'cb.model_provider_gone': 'वह प्रदाता अब नहीं है — /model फिर चलाएँ',
+  'cb.model_hidden': 'छिपाया: {provider}',
+  'cb.model_shown': 'दिखाया: {provider}',
+  'cb.disconnect_expired': 'यह डिस्कनेक्ट मेनू समाप्त हो गया — /disconnect फिर चलाएँ',
   'cb.not_supported': '{label} के लिए समर्थित नहीं',
   'cb.unknown_agent': 'अज्ञात एजेंट',
   'cb.agent_switched': '{label} पर स्विच किया',
