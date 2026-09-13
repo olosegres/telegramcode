@@ -284,6 +284,12 @@ export const enDict: Record<string, string> = {
   'rename_session.success': '✅ Session renamed: {title}',
   'rename_session.failed': '⚠️ Failed to rename the session: {reason}',
 
+  'compact.started': '🧹 Compacting the session context — the agent continues from the summary.',
+  'compact.start_agent_first': 'No active session. Start an agent first (/claude or /opencode).',
+  'compact.unsupported_backend': 'Context compaction is not supported for {label}.',
+  'compact.model_unresolved': '⚠️ Cannot compact: no model is resolved for this session. Pick one with /model and try again.',
+  'compact.failed': '⚠️ Failed to compact the session context: {reason}',
+
   'connect.prompt_key': '🔑 Send the API key for `{provider}` as the next message. I will delete the key message from history.',
   'connect.empty_key': '❌ API key is empty. Send the key as the next message.',
   'connect.invalid_key': '❌ That does not look like an API key (it has spaces or non-Latin characters). Send just the key as the next message, or run /connect again.',

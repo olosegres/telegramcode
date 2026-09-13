@@ -280,6 +280,12 @@ export const esDict: Record<string, string> = {
   'rename_session.success': '✅ Sesión renombrada: {title}',
   'rename_session.failed': '⚠️ Error al renombrar la sesión: {reason}',
 
+  'compact.started': '🧹 Compactando el contexto de la sesión: el agente continúa a partir del resumen.',
+  'compact.start_agent_first': 'No hay sesión activa. Inicia un agente primero (/claude o /opencode).',
+  'compact.unsupported_backend': 'La compactación del contexto no es compatible con {label}.',
+  'compact.model_unresolved': '⚠️ No se puede compactar: no hay modelo resuelto para esta sesión. Elige uno con /model e inténtalo de nuevo.',
+  'compact.failed': '⚠️ Error al compactar el contexto de la sesión: {reason}',
+
   'connect.prompt_key': '🔑 Envía la API key para `{provider}` como próximo mensaje. Eliminaré el mensaje con la clave del historial.',
   'connect.empty_key': '❌ La API key está vacía. Envía la clave como próximo mensaje.',
   'connect.invalid_key': '❌ Eso no parece una API key (tiene espacios o caracteres no latinos). Envía solo la key como próximo mensaje, o ejecuta /connect de nuevo.',

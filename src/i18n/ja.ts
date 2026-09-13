@@ -280,6 +280,12 @@ export const jaDict: Record<string, string> = {
   'rename_session.success': '✅ セッション名を変更: {title}',
   'rename_session.failed': '⚠️ セッション名の変更に失敗: {reason}',
 
+  'compact.started': '🧹 セッションのコンテキストを圧縮中 — エージェントは要約から続行します。',
+  'compact.start_agent_first': 'アクティブなセッションがありません。先にエージェントを起動してください（/claude または /opencode）。',
+  'compact.unsupported_backend': '{label} ではコンテキストの圧縮はサポートされていません。',
+  'compact.model_unresolved': '⚠️ 圧縮できません: このセッションのモデルが解決できません。/model で選択してから再試行してください。',
+  'compact.failed': '⚠️ セッションのコンテキスト圧縮に失敗: {reason}',
+
   'connect.prompt_key': '🔑 次のメッセージで `{provider}` の API key を送信してください。キーを含むメッセージを履歴から削除します。',
   'connect.empty_key': '❌ API key が空です。次のメッセージでキーを送信してください。',
   'connect.invalid_key': '❌ これは API key のようには見えません（スペースや非ラテン文字が含まれています）。次のメッセージで key だけを送信するか、/connect をもう一度実行してください。',

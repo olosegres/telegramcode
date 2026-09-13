@@ -1,0 +1,194 @@
+/**
+ * @description Server-side context compaction for the OpenCode backend
+ * (`OpenCodeAdapter.compactContext`).
+ *
+ * This is the fix for the `/compact` no-op: the command used to be forwarded as
+ * ordinary prompt text to `POST /session/:id/prompt_async`, which does NO
+ * slash-command parsing server-side — so the model answered the literal
+ * "/compact" and nothing was compacted. Real compaction is the separate
+ * `summarize` endpoint, which REQUIRES an explicit model.
+ *
+ * Asserts the locked contract:
+ *   - a live session → exactly ONE `POST /session/:id/summarize`, scoped to the
+ *     session's owning instance (`?directory=<workDir>`), carrying a complete
+ *     `{ providerID, modelID }` and NO `auto` flag (manual compaction), and
+ *     resolves to `null` (success);
+ *   - NO live session → no POST at all, resolves to the `compact.*` notice;
+ *   - a model resolvable ONLY through the server default (`GET /config`) still
+ *     produces complete ids — never a partial/empty ref;
+ *   - no resolvable model at all → a notice and NO POST;
+ *   - a POST rejection resolves to the failure notice (not a throw).
+ *
+ * Harness mirrors openCodeRenameSession.test.ts: real adapter, `apiRequest`
+ * stubbed, sessions injected via runtime bracket access (tests are excluded from
+ * tsconfig and run via tsx, so bracket access does not affect typecheck).
+ */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { OpenCodeAdapter } from '../adapters/openCodeAdapter';
+import { keyToString, type ThreadKey } from '../types';
+
+interface ApiCall {
+  method: string;
+  urlPath: string;
+  body?: unknown;
+}
+
+const sessionId = 'ses_compact_test';
+const workDir = '/tmp/work/telegramCode';
+
+/** The model the stubbed `GET /config` reports as the server default. */
+const serverDefaultModel = { providerID: 'anthropic', modelID: 'claude-sonnet-4-5' };
+
+/** The per-session override, distinct from the server default so they can't be confused. */
+const sessionOverrideModel = { providerID: 'openrouter', modelID: 'z-ai/glm-4.8' };
+
+/**
+ * @description Build an adapter with `apiRequest` recorded. `shouldPostFail`
+ * makes the summarize POST throw so the failure path can be asserted;
+ * `configDefaultModel` is what a `GET /config` lookup reports (`null` = a server
+ * that declares no default model at all).
+ */
+function createCompactAdapter(options: {
+  shouldPostFail?: boolean;
+  configDefaultModel?: { providerID: string; modelID: string } | null;
+} = {}): { adapter: OpenCodeAdapter; calls: ApiCall[] } {
+  const adapter = new OpenCodeAdapter();
+  const calls: ApiCall[] = [];
+  const configDefaultModel = options.configDefaultModel === undefined
+    ? serverDefaultModel
+    : options.configDefaultModel;
+
+  adapter['apiRequest'] = async (method: string, urlPath: string, body?: unknown) => {
+    calls.push({ method, urlPath, body });
+    if (method === 'POST' && options.shouldPostFail) {
+      throw new Error('OpenCode API POST /session/summarize failed: 500 boom');
+    }
+    if (method === 'GET' && urlPath.startsWith('/config')) {
+      return configDefaultModel ? { defaultModel: configDefaultModel } : {};
+    }
+    return undefined;
+  };
+  adapter['connectSse'] = () => {};
+
+  return { adapter, calls };
+}
+
+function injectSession(
+  adapter: OpenCodeAdapter,
+  key: ThreadKey,
+  modelOverride: { providerID: string; modelID: string } | null,
+): void {
+  adapter['sessions'].set(keyToString(key), {
+    key,
+    sessionId,
+    workDir,
+    isActive: true,
+    currentResponseText: '',
+    lastEmittedLength: 0,
+    outputTimer: null,
+    isModelInfoShown: true,
+    modelOverride,
+    currentModelLabel: null,
+    partTypes: new Map(),
+    statusDebounceTimer: null,
+    pendingStatus: null,
+    pendingQuestion: null,
+    effortLevel: null,
+    isBusy: false,
+    isCompacting: false,
+    busyChildSessionIds: new Set(),
+    sseController: null,
+    reconnectTimer: null,
+    sseStallTimer: null,
+    isAutoNamePending: false,
+  });
+}
+
+const getSummarizePosts = (calls: ApiCall[]): ApiCall[] =>
+  calls.filter((c) => c.method === 'POST' && c.urlPath.startsWith(`/session/${sessionId}/summarize`));
+
+describe('OpenCode context compaction', () => {
+  it('POSTs summarize scoped to the session instance with the session model and resolves null', async () => {
+    const { adapter, calls } = createCompactAdapter();
+    const key: ThreadKey = { chatId: -100, threadId: 1 };
+    injectSession(adapter, key, sessionOverrideModel);
+
+    const result = await adapter.compactContext(key);
+
+    assert.equal(result, null, 'success resolves to null');
+    const posts = getSummarizePosts(calls);
+    assert.equal(posts.length, 1, 'compacts exactly once');
+    assert.deepEqual(posts[0].body, {
+      providerID: sessionOverrideModel.providerID,
+      modelID: sessionOverrideModel.modelID,
+    });
+    assert.ok(
+      posts[0].urlPath.includes(`?directory=${encodeURIComponent(workDir)}`),
+      `POST must be instance-scoped: "${posts[0].urlPath}"`,
+    );
+    // A manual compaction must not claim to be the automatic (overflow) one.
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(posts[0].body as object, 'auto'),
+      'a manual compaction must not send `auto`',
+    );
+    // The prompt transport is exactly what this fix stops using for /compact.
+    assert.equal(
+      calls.filter((c) => c.urlPath.includes('prompt_async')).length,
+      0,
+      '/compact must never be sent as a prompt',
+    );
+  });
+
+  it('falls back to the server default model when the session carries no override', async () => {
+    const { adapter, calls } = createCompactAdapter();
+    const key: ThreadKey = { chatId: -100, threadId: 2 };
+    injectSession(adapter, key, null);
+
+    const result = await adapter.compactContext(key);
+
+    assert.equal(result, null, 'success resolves to null');
+    const posts = getSummarizePosts(calls);
+    assert.equal(posts.length, 1, 'compacts exactly once');
+    assert.deepEqual(posts[0].body, serverDefaultModel, 'ids come from the server default');
+    const { providerID, modelID } = posts[0].body as { providerID: string; modelID: string };
+    assert.ok(providerID.length > 0 && modelID.length > 0, 'never a partial model ref');
+  });
+
+  it('with NO resolvable model resolves to a notice and issues no POST', async () => {
+    const { adapter, calls } = createCompactAdapter({ configDefaultModel: null });
+    const key: ThreadKey = { chatId: -100, threadId: 3 };
+    injectSession(adapter, key, null);
+
+    const result = await adapter.compactContext(key);
+
+    assert.ok(typeof result === 'string' && result.length > 0, 'returns a user-facing notice');
+    assert.ok(!result.includes('{'), `notice must be fully substituted: "${result}"`);
+    assert.equal(getSummarizePosts(calls).length, 0, 'no POST without a complete model ref');
+  });
+
+  it('with NO active session resolves to a notice and issues no request at all', async () => {
+    const { adapter, calls } = createCompactAdapter();
+    const key: ThreadKey = { chatId: -100, threadId: 4 }; // no session injected
+
+    const result = await adapter.compactContext(key);
+
+    assert.ok(typeof result === 'string' && result.length > 0, 'returns a user-facing notice');
+    assert.ok(!result.includes('{'), `notice must be fully substituted: "${result}"`);
+    assert.equal(calls.length, 0, 'no HTTP call without a live session');
+  });
+
+  it('a POST failure resolves to a notice (no throw) and names the reason', async () => {
+    const { adapter, calls } = createCompactAdapter({ shouldPostFail: true });
+    const key: ThreadKey = { chatId: -100, threadId: 5 };
+    injectSession(adapter, key, sessionOverrideModel);
+
+    const result = await adapter.compactContext(key);
+
+    assert.ok(typeof result === 'string' && result.length > 0, 'a failed POST returns a notice, not a throw');
+    assert.ok(!result.includes('{'), `notice must be fully substituted: "${result}"`);
+    assert.ok(result.includes('500 boom'), `the failure reason must reach the user: "${result}"`);
+    assert.equal(getSummarizePosts(calls).length, 1, 'the POST was attempted');
+  });
+});

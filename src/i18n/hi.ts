@@ -280,6 +280,12 @@ export const hiDict: Record<string, string> = {
   'rename_session.success': '✅ सत्र का नाम बदला गया: {title}',
   'rename_session.failed': '⚠️ सत्र का नाम बदलने में विफल: {reason}',
 
+  'compact.started': '🧹 सत्र का संदर्भ संक्षिप्त किया जा रहा है — एजेंट सारांश से आगे बढ़ेगा।',
+  'compact.start_agent_first': 'कोई सक्रिय सत्र नहीं। पहले एक एजेंट शुरू करें (/claude या /opencode)।',
+  'compact.unsupported_backend': '{label} के लिए संदर्भ संक्षेपण समर्थित नहीं।',
+  'compact.model_unresolved': '⚠️ संक्षिप्त नहीं कर सकते: इस सत्र के लिए कोई मॉडल तय नहीं है। /model से एक चुनें और फिर प्रयास करें।',
+  'compact.failed': '⚠️ सत्र का संदर्भ संक्षिप्त करने में विफल: {reason}',
+
   'connect.prompt_key': '🔑 अगले संदेश में `{provider}` के लिए API key भेजें। मैं key संदेश को इतिहास से हटा दूँगा।',
   'connect.empty_key': '❌ API key खाली है। अगले संदेश में key भेजें।',
   'connect.invalid_key': '❌ यह API key जैसा नहीं लगता (इसमें स्पेस या गैर-लैटिन अक्षर हैं)। अगले संदेश में केवल key भेजें, या /connect फिर से चलाएँ।',

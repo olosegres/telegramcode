@@ -280,6 +280,12 @@ export const zhDict: Record<string, string> = {
   'rename_session.success': '✅ 会话已重命名：{title}',
   'rename_session.failed': '⚠️ 重命名会话失败：{reason}',
 
+  'compact.started': '🧹 正在压缩会话上下文 — 代理将基于摘要继续。',
+  'compact.start_agent_first': '没有活跃会话。请先启动代理（/claude 或 /opencode）。',
+  'compact.unsupported_backend': '{label} 不支持压缩上下文。',
+  'compact.model_unresolved': '⚠️ 无法压缩：此会话未解析出模型。请用 /model 选择一个后重试。',
+  'compact.failed': '⚠️ 压缩会话上下文失败：{reason}',
+
   'connect.prompt_key': '🔑 在下一条消息中发送 `{provider}` 的 API key。我会从历史中删除包含 key 的消息。',
   'connect.empty_key': '❌ API key 为空。请在下一条消息中发送 key。',
   'connect.invalid_key': '❌ 这看起来不像 API key（包含空格或非拉丁字符）。请在下一条消息中仅发送 key，或重新运行 /connect。',

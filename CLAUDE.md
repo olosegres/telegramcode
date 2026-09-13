@@ -468,6 +468,7 @@ config/variants, not a per-message API field).
 | `utils/linkPreviewSuppression.ts` | Default every outgoing text `sendMessage`/`editMessageText` to NO link preview (`link_preview_options.is_disabled`), injected at the shared `callApi` choke point (installed right after `installCallApiTrace`, sits outside it so the trace records what is sent). A caller that sets its own `link_preview_options` / `disable_web_page_preview` wins; media methods are untouched. Reason: a bare URL in agent output otherwise expanded a large preview card, one per message, in the muted topic |
 | `apiErrorRetry.ts` | Pure auto-retry decision layer for agent **API** errors: `classifyAgentApiError` (transient / usageLimit / null-for-auth; markers from the claude.exe strings), `parseResetAt`, `getRetryPlan` (backoff schedule), `decideRetryAction` (arm/ignore/giveUp + grace-window dedup). The `bot.ts` manager owns the timer + kick |
 | `utils/claudeAuthLogin.ts` | Pure helpers behind the json-stream `/login` out-of-band flow: `parseClaudeAuthLoginUrl` (clean OAuth URL out of the ANSI/OSC-8 pty output — stops at the BEL), `checkIsClaudeAuthLoginCodePrompt` (the "paste code" gate; shares `claudeLoginPastePromptRe` with the tmux login-paste detection), `parseAuthStatusLoggedIn` + `checkIsAuthLoginSucceeded` (status-authoritative, exit-code fallback), `getLoginCommandRoute` (`outOfBand` only for a json-stream RAW pick, else `forwardToAgent`). The impure pty driver + per-thread state live in `bot.ts` (`startClaudeAuthLogin` / `submitClaudeAuthLoginCode` / `cancelClaudeAuthLogin`) |
+| `utils/compactCommandRoute.ts` | Pure three-way route for the bot-owned `/compact`: `getCompactCommandRoute({hasCompactContext, adapterName, terminalAdapterName})` → `adapterCompact` (the backend has a real compaction endpoint — OpenCode's `compactContext`), `notSupported` (terminal: a shell has no context), else `forwardToAgent` (both Claude backends parse `/compact` natively). Kept out of `bot.ts` so the decision is unit-testable, like `getLoginCommandRoute` |
 | `utils/openCodeAuthLogin.ts` | Pure helpers behind OpenCode `/connect`: custom OAuth/multi-step methods come from `/provider/auth`; ordinary providers (including OpenRouter) are validated against the full `/provider` catalog and receive the generic API-key method used by OpenCode's native picker. Also owns OAuth pty parsing and `auth.json` success checks |
 | `openCodeSessionRouting.ts` | Pure helpers: match an SSE event to its owning session via child→parent lineage (`checkIsEventForSession`), record lineage (`updateSessionLineage`), verify strict descent (`getLineageDepthToAncestor` — busy tracking records a busy CHILD only for a verified descendant, so a dir-fallback-routed foreign sibling's busy=true never pins the thread busy) |
 | `utils/sseStreamLifecycle.ts` | Pure decision logic for the OpenCode adapter's single `/global/event` stream: open/close edge detection (`getSseStreamTransition`, driven by the TOTAL active-session count — open on first session anywhere, close on last). The per-directory helpers (`countActiveSessionsForDirectory`, `getWantedStreamDirectories`) now serve scheduler-MCP per-directory tracking, not the stream |
@@ -588,9 +589,21 @@ OpenCode events / bindings).
     "agent start / typing loader" below). Unbound topic → bind-required reply;
     General → a hint that `/new` works inside a bound topic. It no longer creates
     a forum topic (that behavior was removed).
+  - `/compact` is **bot-owned** with PER-BACKEND behaviour (pure three-way
+    decision `getCompactCommandRoute` in `utils/compactCommandRoute.ts`):
+    **OpenCode** → the adapter's `compactContext` (`POST
+    /session/:id/summarize`, directory-scoped, body carries the resolved
+    `providerID`+`modelID`, no `auto` — manual compaction); **terminal** → "not
+    supported" (a shell has no context, and the text would just run as a bogus
+    command); **both Claude backends** → the literal `/compact` is forwarded
+    verbatim as before (their TUI/CLI parses it natively). It used to be
+    un-owned and forwarded for EVERY backend, which silently no-op'd on
+    OpenCode: `prompt_async` does no slash-command parsing, so the model
+    answered the two-word prompt and burned a whole turn without compacting.
+    Automatic (overflow-triggered) compaction is server-side and untouched.
   - `/clear_messages` (formerly `/clear`) deletes this thread's Telegram
     messages (up to 48h, Telegram limit). The bare `/clear` is **no longer
-    bot-owned** — it's forwarded verbatim to the agent like `/compact` (Claude
+    bot-owned** — it's forwarded verbatim to the agent (Claude
     TUI wipes its context; OpenCode treats it as plain text), and forwarding it
     resets the thread-context preamble marker so the next prompt re-informs the
     agent of its topic. It also **purges the thread's file-intake dir** (the

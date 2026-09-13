@@ -2674,6 +2674,51 @@ export class OpenCodeAdapter extends EventEmitter implements AgentAdapter {
     }
   }
 
+  /**
+   * @description Compact the live session's context via `POST /session/:id/
+   * summarize`, scoped to the session's owning project instance
+   * (`?directory=<workDir>`) so it hits the same instance the session was
+   * created in. Reuses {@link apiRequest} — no duplicate HTTP code.
+   *
+   * This is the REAL compaction path. `prompt_async` (the only other transport)
+   * does no slash-command parsing server-side, so forwarding the literal
+   * `/compact` text there just burned a model turn answering a two-word prompt
+   * — the bug this method fixes.
+   *
+   * `summarize` runs a summarisation turn, so it REQUIRES a complete model ref:
+   * the session's `modelOverride` (populated from the server default at session
+   * start) wins, else {@link getProspectiveModelRef} resolves it exactly the way
+   * `/effort` does (saved `/model` pref → server `defaultModel`). Unresolvable →
+   * a notice, never a partial/empty `providerID`/`modelID`.
+   *
+   * `auto` is deliberately omitted: this is a MANUAL compaction and the server
+   * defaults the flag to false (the automatic, overflow-triggered compaction is
+   * server-side and untouched by this).
+   */
+  async compactContext(key: ThreadKey): Promise<string | null> {
+    const session = this.sessions.get(keyToString(key));
+    if (!session?.isActive) return t('compact.start_agent_first');
+
+    const modelRef = session.modelOverride ?? (await this.getProspectiveModelRef(key));
+    if (!modelRef) return t('compact.model_unresolved');
+
+    try {
+      await this.apiRequest(
+        'POST',
+        buildDirectoryScopedPath(`/session/${session.sessionId}/summarize`, session.workDir),
+        { providerID: modelRef.providerID, modelID: modelRef.modelID },
+      );
+      console.log(
+        `[OpenCode] Compacting session ${session.sessionId} with ${modelRef.providerID}/${modelRef.modelID}`,
+      );
+      return null;
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      console.warn(`[OpenCode] context compaction failed:`, reason);
+      return t('compact.failed', { reason });
+    }
+  }
+
   getOpenCodeSessionId(key: ThreadKey): string | null {
     return this.sessions.get(keyToString(key))?.sessionId ?? null;
   }

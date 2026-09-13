@@ -744,6 +744,21 @@ export interface AgentAdapter extends EventEmitter {
   renameSession?(key: ThreadKey, title: string): Promise<string | null>;
 
   /**
+   * Compact (summarize) the CURRENT live session's context so the conversation
+   * can keep going in a smaller window. Same convention as
+   * {@link renameSession}: resolves to `null` on success, or a short
+   * user-facing error string on failure.
+   *
+   * Optional (optional-method pattern, like {@link renameSession}): only
+   * backends that expose a server-side compaction ENDPOINT implement it.
+   * OpenCode does (`POST /session/:id/summarize`). Claude deliberately does
+   * NOT — its TUI owns `/compact` itself, so the bot forwards the literal slash
+   * command to it instead of calling an API. Adapters with neither (Terminal)
+   * get the "not supported" reply.
+   */
+  compactContext?(key: ThreadKey): Promise<string | null>;
+
+  /**
    * Resume an existing backend session under this `key` and `workDir`.
    *
    * `workDir` is now a required argument: the adapter cannot infer it after

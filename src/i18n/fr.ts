@@ -280,6 +280,12 @@ export const frDict: Record<string, string> = {
   'rename_session.success': '✅ Session renommée : {title}',
   'rename_session.failed': '⚠️ Échec du renommage de la session : {reason}',
 
+  'compact.started': '🧹 Compactage du contexte de la session — l\'agent continue à partir du résumé.',
+  'compact.start_agent_first': 'Aucune session active. Démarrez d\'abord un agent (/claude ou /opencode).',
+  'compact.unsupported_backend': 'Le compactage du contexte n\'est pas pris en charge pour {label}.',
+  'compact.model_unresolved': '⚠️ Compactage impossible : aucun modèle n\'est résolu pour cette session. Choisissez-en un avec /model puis réessayez.',
+  'compact.failed': '⚠️ Échec du compactage du contexte de la session : {reason}',
+
   'connect.prompt_key': '🔑 Envoyez la clé API pour `{provider}` comme prochain message. Je supprimerai le message contenant la clé de l\'historique.',
   'connect.empty_key': '❌ La clé API est vide. Envoyez la clé comme prochain message.',
   'connect.invalid_key': '❌ Cela ne ressemble pas à une API key (elle contient des espaces ou des caractères non latins). Envoyez uniquement la key comme prochain message, ou relancez /connect.',

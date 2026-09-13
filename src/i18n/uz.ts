@@ -280,6 +280,12 @@ export const uzDict: Record<string, string> = {
   'rename_session.success': '✅ Seans nomi o‘zgartirildi: {title}',
   'rename_session.failed': '⚠️ Seans nomini o‘zgartirib bo‘lmadi: {reason}',
 
+  'compact.started': '🧹 Seans konteksti siqilmoqda — agent qisqa mazmundan davom etadi.',
+  'compact.start_agent_first': 'Faol seans yo‘q. Avval agentni boshlang (/claude yoki /opencode).',
+  'compact.unsupported_backend': '{label} uchun kontekstni siqish qo‘llab-quvvatlanmaydi.',
+  'compact.model_unresolved': '⚠️ Siqib bo‘lmaydi: bu seans uchun model aniqlanmadi. /model bilan tanlang va qayta urinib ko‘ring.',
+  'compact.failed': '⚠️ Seans kontekstini siqib bo‘lmadi: {reason}',
+
   'connect.prompt_key': '🔑 Keyingi xabar sifatida `{provider}` uchun API kalitni yuboring. Kalit xabarini tarixdan o‘chiraman.',
   'connect.empty_key': '❌ API kalit bo‘sh. Keyingi xabar sifatida kalitni yuboring.',
   'connect.invalid_key': '❌ Bu API kalitiga o‘xshamaydi (unda bo‘shliqlar yoki lotin bo‘lmagan belgilar bor). Keyingi xabar sifatida faqat kalitni yuboring yoki /connect ni qayta ishga tushiring.',

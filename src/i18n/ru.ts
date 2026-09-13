@@ -284,6 +284,12 @@ export const ruDict: Record<string, string> = {
   'rename_session.success': '✅ Сессия переименована: {title}',
   'rename_session.failed': '⚠️ Не удалось переименовать сессию: {reason}',
 
+  'compact.started': '🧹 Сжимаю контекст сессии — агент продолжит с краткой выжимки.',
+  'compact.start_agent_first': 'Нет активной сессии. Сначала запусти агента (/claude или /opencode).',
+  'compact.unsupported_backend': 'Сжатие контекста не поддерживается для {label}.',
+  'compact.model_unresolved': '⚠️ Нельзя сжать: для этой сессии не определена модель. Выбери её через /model и попробуй снова.',
+  'compact.failed': '⚠️ Не удалось сжать контекст сессии: {reason}',
+
   'connect.prompt_key': '🔑 Пришли API key для `{provider}` следующим сообщением. Я удалю сообщение с ключом из истории.',
   'connect.empty_key': '❌ API key пустой. Пришли ключ следующим сообщением.',
   'connect.invalid_key': '❌ Это не похоже на API-ключ (есть пробелы или не-латинские символы). Пришли следующим сообщением только сам ключ или запусти /connect заново.',

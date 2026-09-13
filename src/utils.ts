@@ -39,12 +39,12 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * @description Strip the `@botusername` Telegram appends to a slash command in
  * a group/supergroup.
  *
- * In groups, the Telegram client turns `/compact` into
- * `/compact@my_bot` (always, when the command is in the bot's command menu;
+ * In groups, the Telegram client turns `/context` into
+ * `/context@my_bot` (always, when the command is in the bot's command menu;
  * also whenever multiple bots are present). We forward un-owned slash commands
  * verbatim to the agent's CLI, which does NOT recognise the `@my_bot` suffix —
- * so `/compact` silently no-ops. Strip the mention from the FIRST token only,
- * preserving any arguments: `/compact@my_bot keep notes` → `/compact keep notes`.
+ * so `/context` silently no-ops. Strip the mention from the FIRST token only,
+ * preserving any arguments: `/context@my_bot keep notes` → `/context keep notes`.
  *
  * Only touches a leading `/command@mention`; ordinary text and mid-text `@`s
  * (e.g. `email me @ foo`) are left untouched. Pure + exported for unit tests.

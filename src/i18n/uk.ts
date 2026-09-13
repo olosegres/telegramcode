@@ -286,6 +286,12 @@ export const ukDict: Record<string, string> = {
   'rename_session.success': '✅ Сесію перейменовано: {title}',
   'rename_session.failed': '⚠️ Не вдалося перейменувати сесію: {reason}',
 
+  'compact.started': '🧹 Стискаю контекст сесії — агент продовжить із короткого підсумку.',
+  'compact.start_agent_first': 'Немає активної сесії. Спершу запусти агента (/claude чи /opencode).',
+  'compact.unsupported_backend': 'Стиснення контексту не підтримується для {label}.',
+  'compact.model_unresolved': '⚠️ Не можу стиснути: для цієї сесії не визначено модель. Вибери її через /model і спробуй знову.',
+  'compact.failed': '⚠️ Не вдалося стиснути контекст сесії: {reason}',
+
   'connect.prompt_key': '🔑 Надішли API key для `{provider}` наступним повідомленням. Я видалю повідомлення з ключем з історії.',
   'connect.empty_key': '❌ API key порожній. Надішли ключ наступним повідомленням.',
   'connect.invalid_key': '❌ Це не схоже на API key (є пробіли або нелатинські символи). Надішли наступним повідомленням лише сам ключ або запусти /connect знову.',

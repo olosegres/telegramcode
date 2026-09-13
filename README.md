@@ -293,7 +293,7 @@ actually start an agent or terminal in the folder.
 | `/schedule` | Schedule a prompt in free text — the agent parses the time and owns the job; see [Scheduler](#scheduler-schedule) |
 | `/clear_messages` | Delete bot messages in this topic (up to 48h, Telegram limit) |
 | `/clear` | Forwarded to the agent (Claude wipes context; OpenCode plain text) — not a bot command anymore. Also purges the topic's file-intake dir |
-| `/compact` | Forwarded verbatim to the agent (Claude compacts its context) — not bot-owned |
+| `/compact` | Compact the agent's context. OpenCode: real server-side compaction; Claude: the literal command is forwarded (its TUI compacts); terminal: not supported |
 | `/bind` | Bare: current binding + folder picker, with «leave current dir» (the old `/unbind`) and «create new folder» buttons |
 | `/mcp` | List MCP servers active for this thread |
 

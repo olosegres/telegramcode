@@ -280,6 +280,12 @@ export const deDict: Record<string, string> = {
   'rename_session.success': '✅ Session umbenannt: {title}',
   'rename_session.failed': '⚠️ Session konnte nicht umbenannt werden: {reason}',
 
+  'compact.started': '🧹 Der Session-Kontext wird komprimiert — der Agent macht mit der Zusammenfassung weiter.',
+  'compact.start_agent_first': 'Keine aktive Session. Starte zuerst einen Agent (/claude oder /opencode).',
+  'compact.unsupported_backend': 'Kontext-Komprimierung wird für {label} nicht unterstützt.',
+  'compact.model_unresolved': '⚠️ Komprimieren nicht möglich: für diese Session ist kein Modell ermittelt. Wähle eines mit /model und versuche es erneut.',
+  'compact.failed': '⚠️ Session-Kontext konnte nicht komprimiert werden: {reason}',
+
   'connect.prompt_key': '🔑 Sende den API-Key für `{provider}` als nächste Nachricht. Ich lösche die Key-Nachricht aus dem Verlauf.',
   'connect.empty_key': '❌ API-Key ist leer. Sende den Key als nächste Nachricht.',
   'connect.invalid_key': '❌ Das sieht nicht wie ein API key aus (er enthält Leerzeichen oder nicht-lateinische Zeichen). Sende als nächste Nachricht nur den Key oder starte /connect erneut.',

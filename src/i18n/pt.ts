@@ -280,6 +280,12 @@ export const ptDict: Record<string, string> = {
   'rename_session.success': '✅ Sessão renomeada: {title}',
   'rename_session.failed': '⚠️ Falha ao renomear a sessão: {reason}',
 
+  'compact.started': '🧹 A compactar o contexto da sessão — o agente continua a partir do resumo.',
+  'compact.start_agent_first': 'Sem sessão ativa. Inicia um agente primeiro (/claude ou /opencode).',
+  'compact.unsupported_backend': 'A compactação de contexto não é suportada para {label}.',
+  'compact.model_unresolved': '⚠️ Não é possível compactar: nenhum modelo está resolvido para esta sessão. Escolhe um com /model e tenta novamente.',
+  'compact.failed': '⚠️ Falha ao compactar o contexto da sessão: {reason}',
+
   'connect.prompt_key': '🔑 Envia a API key para `{provider}` como próxima mensagem. Vou apagar a mensagem com a chave do histórico.',
   'connect.empty_key': '❌ A API key está vazia. Envia a chave como próxima mensagem.',
   'connect.invalid_key': '❌ Isto não parece uma API key (tem espaços ou caracteres não latinos). Envia apenas a key como próxima mensagem, ou executa /connect novamente.',

@@ -256,6 +256,7 @@ import {
   checkIsAuthLoginSucceeded,
   getLoginCommandRoute,
 } from './utils/claudeAuthLogin';
+import { getCompactCommandRoute } from './utils/compactCommandRoute';
 import {
   type OpenCodeAuthMethod,
   buildOpenCodeAuthLoginArgs,
@@ -6688,6 +6689,54 @@ command('rename_session', async (ctx, key) => {
   await updatePinnedStatus(key).catch(() => {});
 });
 
+/** The literal slash command forwarded to backends whose own CLI parses it. */
+const compactCommandText = '/compact';
+
+/** `adapter.name` of the raw-shell backend (see the `terminal` adapter). */
+const terminalAdapterName = 'terminal';
+
+// `/compact` — shrink the agent's context. BOT-OWNED, because "forward the text
+// and hope" only works for a backend that parses slash commands itself: OpenCode's
+// prompt transport does not, so the literal `/compact` used to reach the model as
+// an ordinary prompt and burn a whole turn without compacting anything. The
+// three-way decision is the pure `getCompactCommandRoute`.
+command('compact', async (_ctx, key) => {
+  const adapter = getThreadAdapter(key);
+  const route = getCompactCommandRoute({
+    hasCompactContext: Boolean(adapter.compactContext),
+    adapterName: adapter.name,
+    terminalAdapterName,
+  });
+
+  // A raw shell has no context to compact — and typing `/compact` into it would
+  // just run a meaningless command.
+  if (route === 'notSupported') {
+    await replyToThread(key, t('compact.unsupported_backend', { label: adapter.label }));
+    return;
+  }
+
+  // Both Claude backends: their CLI/TUI owns `/compact`, so keep the verbatim
+  // forward through the normal choke point (slash commands skip the
+  // thread-context preamble and the timestamp line).
+  if (route === 'forwardToAgent') {
+    if (!adapter.checkIsActive(key)) {
+      await replyToThread(key, t('compact.start_agent_first'));
+      return;
+    }
+    await forwardPromptToAgent(key, adapter, compactCommandText);
+    return;
+  }
+
+  // Real server-side compaction. `compactContext` is what selected this route;
+  // the guard only narrows the optional method for TypeScript.
+  const err = adapter.compactContext ? await adapter.compactContext(key) : null;
+  if (err) {
+    await replyToThread(key, err);
+    return;
+  }
+  await replyToThread(key, t('compact.started'));
+});
+
 /**
  * @description Build the agent-picker keyboard.
  *
@@ -7269,7 +7318,7 @@ const botCommands = new Set([
   'start', 'claude', 'opencode', 'oc', 'terminal', 'agent', 'sessions', 'resume', 'cancel', 'model', 'connect',
   'disconnect', 'stop', 'stopall', 'stop-all', 'status', 'c', 'y', 'n', 'enter', 'up', 'down', 'tab', 'esc', 'escape', 'output', 'clear_messages',
   'bind', 'unbind', 'where', 'ls', 'list', 'new', 'clear_session', 'whoami', 'version', 'help', 'language', 'lang',
-  'doctor', 'mcp', 'rename_session', 'trace', 'timestamps', 'schedule', 'thinking', 'tool_results',
+  'doctor', 'mcp', 'rename_session', 'compact', 'trace', 'timestamps', 'schedule', 'thinking', 'tool_results',
   'subagent', 'claude_mode', 'effort', 'verbosity', 'quit', 'q', 'quit-all', 'quitall', 'pair',
 ]);
 
@@ -7295,14 +7344,15 @@ bot.on(message('text'), async (ctx) => {
   cancelApiRetry(key);
 
   // In groups Telegram appends `@botusername` to slash commands
-  // (`/compact` → `/compact@my_bot`). Strip it up-front so BOTH the
+  // (`/context` → `/context@my_bot`). Strip it up-front so BOTH the
   // bot-owned-command check below AND the verbatim forward to the agent see
-  // the bare command — otherwise the agent's CLI gets `/compact@my_bot` and
-  // silently ignores it (the long-standing /compact bug).
+  // the bare command — otherwise the agent's CLI gets `/context@my_bot` and
+  // silently ignores it (the long-standing mention bug, first hit on /compact
+  // back when that one was still forwarded).
   const text = stripCommandBotMention(ctx.message.text.trim());
   const kStr = keyToString(key);
 
-  // Slash commands we don't own → forward to the agent (e.g. `/compact`, `/help`).
+  // Slash commands we don't own → forward to the agent (e.g. `/context`, `/help`).
   if (text.startsWith('/')) {
     const cmd = text.slice(1).split(' ')[0].split('@')[0].toLowerCase();
     if (botCommands.has(cmd)) return;

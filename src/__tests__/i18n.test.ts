@@ -137,6 +137,30 @@ test('rename-session keys exist in every locale', () => {
   assert.ok(checkKeyInAllLangs('rename_session.failed'), 'rename_session.failed missing in some locale');
 });
 
+test('compact keys exist in every locale', () => {
+  for (const code of [
+    'compact.started',
+    'compact.start_agent_first',
+    'compact.unsupported_backend',
+    'compact.model_unresolved',
+    'compact.failed',
+  ]) {
+    assert.ok(checkKeyInAllLangs(code), `${code} missing in some locale`);
+  }
+});
+
+test('compact.failed substitutes the {reason}', () => {
+  const out = t('compact.failed', { reason: 'HTTP 500 boom' });
+  assert.ok(out.includes('HTTP 500 boom'), `expected the reason in "${out}"`);
+  assert.ok(!out.includes('{reason}'), `placeholder not substituted: "${out}"`);
+});
+
+test('compact.unsupported_backend substitutes the {label}', () => {
+  const out = t('compact.unsupported_backend', { label: '🖥 Terminal' });
+  assert.ok(out.includes('🖥 Terminal'), `expected the label in "${out}"`);
+  assert.ok(!out.includes('{label}'), `placeholder not substituted: "${out}"`);
+});
+
 test('connect provider-auth keys exist in every locale', () => {
   for (const code of [
     'connect.prompt_key',
