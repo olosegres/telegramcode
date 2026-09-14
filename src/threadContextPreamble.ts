@@ -35,19 +35,29 @@ export interface ThreadContextPreambleInput {
   key: ThreadKey;
   /** Bound subfolder under `WORK_ROOT`. */
   subdir: string;
+  /**
+   * The instance timezone every clock the bot renders speaks in. Carried here
+   * because it is STATIC for a session and therefore rides the existing
+   * on-change injection for free; the current INSTANT deliberately stays on the
+   * per-prompt paths (`/timestamps`, the `/schedule` templates), since a value
+   * that changes every message would re-inject the preamble on every message.
+   * Optional so a caller that has no zone to report simply omits the field.
+   */
+  timezone?: string;
 }
 
 /**
  * @description Render the preamble block. Always includes the `thread:` /
- * `folder:` line; the `topic:` / `group:` line is included only when at
- * least one of those two fields is known (the topic name is dropped when
- * unknown, per the locked decision).
+ * `folder:` line (joined by a `timezone:` part when a zone is supplied); the
+ * `topic:` / `group:` line is included only when at least one of those two
+ * fields is known (the topic name is dropped when unknown, per the locked
+ * decision).
  *
  * Returns a multi-line string WITHOUT a trailing prompt — the caller joins
  * it to the user's text with a blank-line separator.
  */
 export function buildThreadContextPreamble(input: ThreadContextPreambleInput): string {
-  const { topicName, groupTitle, key, subdir } = input;
+  const { topicName, groupTitle, key, subdir, timezone } = input;
   const lines: string[] = [threadContextPreambleHeader];
 
   const identityParts: string[] = [];
@@ -55,7 +65,9 @@ export function buildThreadContextPreamble(input: ThreadContextPreambleInput): s
   if (groupTitle) identityParts.push(`group: "${groupTitle}"`);
   if (identityParts.length > 0) lines.push(identityParts.join(' | '));
 
-  lines.push(`thread: ${keyToString(key)} | folder: ${subdir}`);
+  const threadParts = [`thread: ${keyToString(key)}`, `folder: ${subdir}`];
+  if (timezone) threadParts.push(`timezone: ${timezone}`);
+  lines.push(threadParts.join(' | '));
   return lines.join('\n');
 }
 

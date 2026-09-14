@@ -10,6 +10,10 @@ export interface ThreadStatusReportInput {
   effort: string | null;
   startedAt: string | null;
   runtime: AgentRuntimeInfo | null;
+  /** Instance timezone, already resolved (stored pick, else the host zone). */
+  timezone: string;
+  /** That zone's current wall clock, e.g. `18:42 (+03:00)`. */
+  timezoneNow: string;
 }
 
 /**
@@ -31,6 +35,8 @@ export function getThreadStatusReport({
   effort,
   startedAt,
   runtime,
+  timezone,
+  timezoneNow,
 }: ThreadStatusReportInput): string {
   const lines = [
     t('status.thread_report', {
@@ -40,6 +46,9 @@ export function getThreadStatusReport({
     }),
   ];
   if (workDir !== null) lines.push(t('status.thread_workdir', { workDir }));
+  // Instance-wide, not a session property: it belongs ABOVE the early return so
+  // a stopped thread still reports which clock its schedules will fire on.
+  lines.push(t('timezone.status', { zone: timezone, now: timezoneNow }));
   if (!isActive) return lines.join('\n');
 
   if (model) lines.push(t('status.thread_model', { model }));

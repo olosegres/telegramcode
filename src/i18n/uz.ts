@@ -173,6 +173,22 @@ export const uzDict: Record<string, string> = {
   'language.auto_success': '✅ Til avtomatik rejimga qaytarildi. Joriy: {display}.',
   'language.invalid': '⚠️ `{locale}` locale qo‘llab-quvvatlanmaydi. Mavjud: {locales}.',
 
+  'timezone.status': '🌍 Vaqt mintaqasi: {zone} — hozir {now}',
+  'timezone.usage':
+    'Foydalanish: /timezone <IANA mintaqasi>  ·  /timezone +04:00  ·  /timezone auto\nYoki argumentsiz /timezone yuboring va ro‘yxatdan tanlang.',
+  'timezone.set_success': '✅ Vaqt mintaqasi: {zone} — hozir {now}\nQayta hisoblangan jadvallar: {count}',
+  'timezone.auto_success':
+    '✅ Vaqt mintaqasi host mintaqasiga qaytarildi: {zone} — hozir {now}\nQayta hisoblangan jadvallar: {count}',
+  'timezone.invalid':
+    '⚠️ Noma’lum vaqt mintaqasi `{zone}`. IANA nomini (masalan, `Europe/Moscow`) yoki qat’iy siljishni (masalan, `+04:00`) kiriting. Ro‘yxatdan tanlash uchun /timezone yuboring.',
+  'timezone.offset_unsupported':
+    '⚠️ `{zone}` siljishini qo‘llab bo‘lmaydi — faqat butun soatli siljishlar ishlaydi. Buning o‘rniga mintaqangizning IANA nomini kiriting (masalan, +05:30 uchun `Asia/Kolkata`).',
+  'timezone.fixed_offset_warning':
+    '⚠️ Qat’iy siljish yozgi vaqtga ergashmaydi — yilning yarmida bir soat xato bo‘ladi.',
+  'timezone.picker_regions': '🌍 Vaqt mintaqasi: {zone}\nHozir: {now}\n\nMintaqani tanlang:',
+  'timezone.picker_zones': '🌍 {region} — {page}/{total}-sahifa',
+  'timezone.picker_expired': 'Bu ro‘yxat eskirgan — /timezone ni qayta yuboring.',
+
   'agent.ready': '{label} `{subdir}`{argsSuffix} da tayyor\n{infoBlock}Xabar yuboring:',
   'agent.ready_model': '🧠 Model: {model}',
   'agent.no_session': 'Agent ishlamayapti. /claude yoki /opencode bilan boshlang.',
@@ -427,10 +443,12 @@ export const uzDict: Record<string, string> = {
   'schedule.resumedRebind': '▶️ Rejalar davom etdi: {count} (keyingi ishga tushirish hozirdan qayta hisoblanadi).',
   'schedule.noAgent':
     "⚠️ Hech narsa rejalashtirilmadi — bu mavzuda hech qanday agent ishlamayapti, shuning uchun rejalashtirilgan ishga tushirish uchun hech narsa bo'lmaydi. Avval /claude yoki /opencode ni ishga tushiring.",
+  'schedule.currentTimeNote':
+    'Current time is {now} in timezone {zone}. Resolve every relative time phrasing ("tomorrow", "in 2 hours", "9am") against THAT clock — the schedule fires in the same timezone.',
   'schedule.forwardPromptTemplate':
-    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN UZBEK what you scheduled.\n\nRequest: {text}',
+    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN UZBEK what you scheduled.\n\n{timeNote}\n\nRequest: {text}',
   'schedule.interviewPromptTemplate':
-    'The user invoked /schedule with no details. Ask them IN UZBEK what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN UZBEK what you scheduled.',
+    'The user invoked /schedule with no details. Ask them IN UZBEK what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN UZBEK what you scheduled.\n\n{timeNote}',
 
   'apiRetry.transientNotice':
     '⏳ API tezlik bilan cheklangan — {minutes} daqiqadan keyin avtomatik qayta urinish (urinish {attempt}).',

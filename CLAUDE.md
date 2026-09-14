@@ -392,9 +392,28 @@ config/variants, not a per-message API field).
   «leave current dir» button) pauses the thread's jobs (one notice); `/bind`
   resumes them from now (an expired one-shot is dropped). Run history:
   `DATA_DIR/scheduler-runs.jsonl`.
+- **One instance-wide timezone (`/timezone`).** The operator declares their zone
+  ONCE and every clock the bot touches speaks it. The mechanism is
+  `process.env.TZ` — process-global by nature, which is exactly why the setting
+  is per INSTANCE, not per chat or topic (two chat-scoped zones could not both
+  be true in one process). Applied at boot right after the state store loads and
+  again on every `/timezone` change through the same `applyProcessTimezone`;
+  because assigning `TZ` re-bases `Date`/`Intl` immediately, every existing
+  host-local render (cron fire times, "missed at HH:MM", `/timestamps`, schedule
+  descriptions) becomes correct with no per-call-site threading. Absent by
+  default ⇒ host zone ⇒ an install that never ran `/timezone` is unchanged.
+  Beyond the clocks it also feeds the AGENT: `/schedule` carries the current
+  instant + zone, and the thread-context preamble carries the zone name — so
+  "tomorrow at 9" resolves against the operator's clock instead of the model's
+  guess. See the `/timezone` command entry below for the scheduler trap it
+  avoids.
 - **Thread-context preamble.** The bot prepends a `[Telegram thread context]`
-  block (topic name, group title, `chatId:threadId`, bound folder) to the
-  forwarded prompt so the agent knows WHERE it works. Built in
+  block (topic name, group title, `chatId:threadId`, bound folder, instance
+  timezone) to the forwarded prompt so the agent knows WHERE — and on which
+  clock — it works. The zone rides here because it is STATIC for a session; the
+  current INSTANT stays on the per-prompt paths (`/timestamps`, the `/schedule`
+  templates), since a value that changes every message would re-inject the
+  preamble every message. Built in
   `threadContextPreamble.ts`; injected in `forwardPromptToAgent` (the single
   choke point). Rides the next prompt only when it changed since last sent —
   per-thread in-memory marker, reset on session start/stop/closed and on
@@ -506,6 +525,8 @@ config/variants, not a per-message API field).
 | `utils/claudeRelayRouting.ts` | Pure per-pref router for the classifier's segments (S4–S6): `routeClaudeChunkSegments` keeps prose always, applies `/tool_results` + `/thinking` per segment (full keep / short truncate-or-collapse / minimal fold), always folds sub-agent panel previews to status, and returns `keptText` (permanent) + the one rolling `activityLine`; `checkIsClaudeRelayFastPath` is the all-`full` byte-identical regression anchor |
 | `utils/claudeSubagentTail.ts` | Pure decision logic for Claude's `/subagent full` transcript tailing: per-file tail state (byte offset + partial-line carry), the scan planner (`getSubagentTailReads`: first scan seeds offsets to EOF with no reads = no backlog replay; non-`full` modes fast-forward without reading; full returns `[offset..size)` ranges), the transcript filename filter (`checkIsSubagentTranscriptName`), and the extractor (`extractAppendedSubagentTexts`: assistant `text` blocks only — thinking/tool_use/user/attachment dropped, malformed JSONL lines skipped). The adapter's poll tick does the fs work |
 | `utils/canonicalPathContainment.ts` | Shared security boundary for binding and file-send path resolution: canonicalizes a candidate beneath an already-canonical/pinned root and performs separator-safe containment, while each caller retains its own input validation, root error mapping, and file-vs-directory gate |
+| `utils/timezone.ts` | The operator-timezone core: `getCanonicalTimezone` / `checkIsValidTimezone` (an `Intl.DateTimeFormat` probe IS the validation rule — `RangeError` ⇒ invalid; `resolvedOptions()` canonicalizes `europe/moscow` → `Europe/Moscow`), `checkIsFixedOffsetZone` (drives the DST warning), the picker catalog (`listTimezoneRegions` / `getTimezonesForRegion` / `getTimezoneRegion` off `Intl.supportedValuesOf('timeZone')`, no dependency), the wall-clock formatters (`formatZoneNow` `18:42 (+03:00)`, `formatZoneNowWithDate` for the picker header), `getEffectiveTimezone` (stored ?? host — the single "unset means host" rule), `getProcessTimezoneValue` / `checkIsApplicableTimezone` (a fixed offset must be rewritten to `Etc/GMT±H` before it reaches `process.env.TZ`; ICU resolves `TZ="+04:00"` to UTC, so a half-hour offset has no applicable value and is refused), and the one impure `applyProcessTimezone` shared by boot + `/timezone`. The host zone and the launch `TZ` env are snapshotted at MODULE LOAD, before any apply: once a stored zone is written, `resolvedOptions()` reports it and the original would otherwise be unrecoverable — that snapshot is what `/timezone auto` restores |
+| `utils/timezonePicker.ts` | Pure builders + INDEX-based callback codec for the two-level `/timezone` picker (regions → that region's paginated zones): `buildTimezoneRegionPicker` (2/row + a full-width `🌐 Auto (host zone)` row, `✓` on the region CONTAINING the current zone — a fixed offset belongs to no region, so nothing is marked), `buildTimezoneZonePicker` (one zone per row + `‹ Prev`/`⬅ Regions`/`Next ›`, returns the clamped page/total for the localized header, `null` for a stale region index), `getTimezoneAt`/`getTimezoneRegionAt` (stale index ⇒ `null` so the handler answers "expired" instead of applying a neighbouring zone), `tzr_`/`tz_`/`tzback`/`tzauto` builders + parsers. Pagination reuses `utils/paginateList.ts` |
 | `utils/paginateList.ts` | The generic pagination core shared by every inline-keyboard picker: `paginateList(items, page, pageSize)` (slice + clamp a stale/over-range page to the last real one, ≥1 page even when empty). `validation.ts`'s `paginateBindList` is now a thin wrapper over it |
 | `utils/modelPickerPlan.ts` | Pure layer behind the two-level `/model` picker: `buildModelCatalog` (group + visibility partition in one pass; the bot's `getModelCatalog` only adds the adapter fetch + the persisted hidden-provider read), `groupModelsByProvider(models, fallbackProvider)` (first-`/` segment; slash-less ids group under the adapter label so Claude's aliases aren't dropped), `getProviderVisibility` (visible/hidden split), `checkHasProviderLevel` (skip level 1 for a lone provider), `getModelShortLabel`, and the INDEX-based callback codec (`mdlp_`/`mdl_`/`mdlhide_`/`mdlshow_`/`mdlback`/`mdlnoop` builders + parsers + `checkIsCallbackDataWithinLimit` against Telegram's 64-BYTE `callback_data` cap) |
 | `utils/providerDisconnectPlan.ts` | Pure decision behind `/disconnect`: `getProviderDisconnectOutcome(providerId, activeIdsAfterDelete)` → `removed` vs `stillActiveViaEnv` (a provider still listed after `DELETE /auth/:id` comes from an environment variable the bot cannot unset), the `dscp_<idx>` picker callback codec, and the per-MESSAGE picker-snapshot keying (`buildDisconnectPickerKey`, `getDisconnectPickerProviderAt`, `getDisconnectPickerKeysForThread`, `getEvictedDisconnectPickerKeys`) that stops an older keyboard from resolving its index against a newer list |
@@ -523,6 +544,7 @@ config/variants, not a per-message API field).
 | `scheduler/runLedger.ts` | Append-only JSONL run history (`DATA_DIR/scheduler-runs.jsonl`, 10MB→.1 rotation) |
 | `scheduler/directoryThreads.ts` | Inversion: directory → thread keys bound to it (the MCP `dir:` scope resolution). Matches each binding's CANONICAL workDir via `resolveBoundWorkDir`, so it touches the filesystem (`realpathSync`) and can throw — NOT a pure helper |
 | `scheduler/rebindResume.ts` | Pure rebind decision: resume a paused job from now, or drop an expired one-shot |
+| `scheduler/timezoneRecompute.ts` | Re-base EVERY job after a `/timezone` change: recompute `nextRunAt` from now (reusing `getRebindResumeAction`), persist, THEN arm — never the engine's `rearmAll()`, which reads a now-past stored `nextRunAt` as a missed run and fires a bogus catch-up into the topic. Paused jobs are recomputed too (else a later resume arms a stale instant) but stay disarmed; an expired one-shot is dropped. Deps (store/engine/clock) are injected so the "no delivery fires" property is testable |
 | `diagLog.ts` | Bounded rotating diagnostic log (`appendDiagLog`) under `DATA_DIR/agent-diag.log` — SSE/session lifecycle milestones only, never the per-delta firehose |
 | `outputTrace.ts` | Output-trace mode, toggled at runtime via `/trace` (no env var): JSONL record of incoming updates (`recv`), adapter emits (`emit`), and every outgoing Bot API call with outcome (`sendTry`/`sendOk`/`sendErr`, incl. 429 details) under hourly bucket files `DATA_DIR/output-trace-*.jsonl` — lets live verification diff what the bot did vs what reached Telegram. The toggle (`tracedThreads` set + `traceAllThreads` flag) is persisted in `state.json` and re-seeded at boot; an async-buffered, single-flight writer flushes on a 500ms timer / 200-entry threshold (sync flush on process exit). **ON by default for ALL threads** (always-on observability — see below); `/trace off all` turns it off DURABLY (persisted `false`). Buckets pruned at 6h by the bot janitor (`pruneTraceBuckets`). Filtering: `recv`/`emit`/send-with-thread-id record iff the thread is traced (all-flag or in the set); send records with NO derivable thread id (e.g. `editMessageText`) record whenever ANY tracing is active |
 | `utils/recvPreviewRedaction.ts` | Pure security decision for the recv-trace preview (`getRecvTracePreview`): while a thread is in the pending `/connect` state (same `pendingProviderConnects` state the text handler consumes), the next non-command text IS a pasted provider API key → the preview is redacted at record time; an inline `/connect <key>` records only a fixed command marker. Also owns the shared `checkIsConnectCommandText` |
@@ -975,7 +997,7 @@ OpenCode events / bindings).
     `utils/toolResultRender.ts`, `utils/subagentRender.ts`,
     `utils/subagentStatusRender.ts`, `utils/claudeSubagentTail.ts`.
 - **Info / ops:** `/start`, `/status`, `/whoami`, `/version`, `/help`,
-  `/doctor`, `/mcp`, `/trace`, `/timestamps`, `/language` (`/lang`)
+  `/doctor`, `/mcp`, `/trace`, `/timestamps`, `/timezone`, `/language` (`/lang`)
   - `/language [locale|auto]` shows or changes the bot UI language for the
     current Telegram chat (DM or whole forum group). Bare `/language` opens a
     SINGLE-PAGE inline picker (pure builder in `utils/languagePicker.ts`): one
@@ -1010,6 +1032,44 @@ OpenCode events / bindings).
     Default OFF; persisted in `state.json` (`timestampThreads`, mirrors
     `/trace`'s shape), lifecycle-independent. Use case: long multi-day sessions
     where the agent needs absolute time for "yesterday" / "2-3 days ago".
+  - `/timezone [<IANA zone>|+HH:MM|auto]` sets the ONE instance-wide operator
+    timezone (bare → a two-level region → zone picker, `/model`-style
+    INDEX-based callbacks because zone names blow past the 64-byte
+    `callback_data` cap). Instance-wide, NOT per chat/topic: the mechanism is
+    `process.env.TZ`, which is process-global by nature, so two chat-scoped
+    zones could not both be true in one process. Persisted as `state.json`
+    `timezone` (absent by default ⇒ host zone ⇒ an install that never ran it
+    behaves exactly as before), applied at boot right after the store loads and
+    again on every change through the SAME `applyProcessTimezone`
+    (`utils/timezone.ts`). Assigning `process.env.TZ` re-bases `Date`/`Intl`
+    IMMEDIATELY (verified on Node 22, asserted by a unit test rather than
+    trusted) — which is why almost nothing else needed editing:
+    `formatIsoLocalOffset`, `formatLocalClock`, `delivery.ts formatLocalTime`,
+    `recurrence.ts describeOnce` and croner's host-local default all already
+    read host-local time and become correct for free. No `timezone` option is
+    threaded into croner on purpose — with `TZ` applied its default IS the
+    operator's zone, and a per-job zone would be a second source of truth.
+    A `+HH:MM` offset is ACCEPTED (Intl validates it) with a DST warning rather
+    than rejected; an unknown zone is rejected and nothing is written. The one
+    offset that is NOT accepted is a half-hour one: `Intl` takes `+05:30`, but
+    ICU parses the `TZ` env itself and silently resolves any offset spelling to
+    UTC — only the `Etc/GMT±H` form takes effect, so `getProcessTimezoneValue`
+    rewrites whole-hour offsets into it (POSIX sign inversion: `+04:00` →
+    `Etc/GMT-4`) and `checkIsApplicableTimezone` refuses the rest, which would
+    otherwise store a setting that leaves the process on UTC while the
+    confirmation cheerfully printed `+05:30`.
+    **The trap (S3):** a zone change must NOT go through the engine's
+    `rearmAll()` — that is the BOOT replay, which arms from each job's STORED
+    `nextRunAt` and treats a past one as a MISSED run, announcing + pinning +
+    delivering a catch-up. After a zone change stored `nextRunAt` values are
+    routinely in the past, so `rearmAll` would spam bogus "missed at HH:MM"
+    runs into every topic. `scheduler/timezoneRecompute.ts` recomputes FIRST
+    (reusing `getRebindResumeAction`: next occurrence from now, expired
+    one-shot dropped), persists, and only then arms — paused jobs included, so
+    a later resume can't arm a stale pre-change instant. Cron is wall-clock, so
+    "9am" stays 9am and simply lands on a different absolute instant. Covered
+    by a unit test whose first case is a deliberate CONTRAST proving `rearmAll`
+    DOES fire on the same state.
   - `/trace on|off` toggles the output-trace recorder for THIS topic; `/trace
     on all` / `/trace off all` flips the every-thread flag (and `off all`
     clears the per-thread set too); bare `/trace` reports status. Persisted in

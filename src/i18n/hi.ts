@@ -173,6 +173,22 @@ export const hiDict: Record<string, string> = {
   'language.auto_success': '✅ भाषा ऑटो पर रीसेट की गई। मौजूदा: {display}।',
   'language.invalid': '⚠️ locale `{locale}` समर्थित नहीं है। उपलब्ध: {locales}.',
 
+  'timezone.status': '🌍 समय क्षेत्र: {zone} — अभी {now}',
+  'timezone.usage':
+    'उपयोग: /timezone <IANA क्षेत्र>  ·  /timezone +04:00  ·  /timezone auto\nया बिना तर्क के /timezone भेजें और सूची से चुनें।',
+  'timezone.set_success': '✅ समय क्षेत्र: {zone} — अभी {now}\nपुनर्गणना किए गए शेड्यूल: {count}',
+  'timezone.auto_success':
+    '✅ समय क्षेत्र होस्ट क्षेत्र पर रीसेट: {zone} — अभी {now}\nपुनर्गणना किए गए शेड्यूल: {count}',
+  'timezone.invalid':
+    '⚠️ अज्ञात समय क्षेत्र `{zone}`। IANA नाम (जैसे `Europe/Moscow`) या स्थिर ऑफसेट (जैसे `+04:00`) का उपयोग करें। सूची से चुनने के लिए /timezone भेजें।',
+  'timezone.offset_unsupported':
+    '⚠️ ऑफसेट `{zone}` लागू नहीं हो सकता — केवल पूरे घंटे वाले ऑफसेट काम करते हैं। इसके बजाय अपने क्षेत्र का IANA नाम दें (जैसे +05:30 के लिए `Asia/Kolkata`)।',
+  'timezone.fixed_offset_warning':
+    '⚠️ स्थिर ऑफसेट डेलाइट सेविंग का पालन नहीं करता — आधे साल यह एक घंटा गलत रहेगा।',
+  'timezone.picker_regions': '🌍 समय क्षेत्र: {zone}\nअभी: {now}\n\nक्षेत्र चुनें:',
+  'timezone.picker_zones': '🌍 {region} — पृष्ठ {page}/{total}',
+  'timezone.picker_expired': 'यह सूची पुरानी है — /timezone दोबारा भेजें।',
+
   'agent.ready': '{label} `{subdir}`{argsSuffix} में तैयार\n{infoBlock}एक संदेश भेजें:',
   'agent.ready_model': '🧠 मॉडल: {model}',
   'agent.no_session': 'कोई एजेंट नहीं चल रहा। /claude या /opencode से शुरू करें।',
@@ -427,10 +443,12 @@ export const hiDict: Record<string, string> = {
   'schedule.resumedRebind': '▶️ शेड्यूल पुनः शुरू: {count} (अगला रन अब से पुनः गणना)।',
   'schedule.noAgent':
     '⚠️ कुछ भी शेड्यूल नहीं हुआ — इस टॉपिक में कोई एजेंट नहीं चल रहा, इसलिए शेड्यूल किए गए रन के पास शुरू करने के लिए कुछ नहीं होगा। पहले /claude या /opencode शुरू करें।',
+  'schedule.currentTimeNote':
+    'Current time is {now} in timezone {zone}. Resolve every relative time phrasing ("tomorrow", "in 2 hours", "9am") against THAT clock — the schedule fires in the same timezone.',
   'schedule.forwardPromptTemplate':
-    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN HINDI what you scheduled.\n\nRequest: {text}',
+    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN HINDI what you scheduled.\n\n{timeNote}\n\nRequest: {text}',
   'schedule.interviewPromptTemplate':
-    'The user invoked /schedule with no details. Ask them IN HINDI what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN HINDI what you scheduled.',
+    'The user invoked /schedule with no details. Ask them IN HINDI what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN HINDI what you scheduled.\n\n{timeNote}',
 
   'apiRetry.transientNotice':
     '⏳ API दर-सीमित — {minutes} मिनट में स्वतः पुनः प्रयास (प्रयास {attempt})।',

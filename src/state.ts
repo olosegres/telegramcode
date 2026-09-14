@@ -205,6 +205,16 @@ export interface StateV1 {
    */
   timestampThreads?: string[];
   /**
+   * The operator's timezone, GLOBAL for the whole bot instance (not per-chat —
+   * the mechanism is `process.env.TZ`, which is process-global by nature). Holds
+   * either an IANA name (`Europe/Moscow`) or a fixed offset (`+04:00`), as
+   * written by `/timezone`. Absent means "use the host zone", so an install that
+   * never ran `/timezone` behaves exactly as it did before the setting existed —
+   * which is why the field is optional rather than defaulted on disk.
+   * Lifecycle-independent: only `/timezone` mutates it, never session teardown.
+   */
+  timezone?: string;
+  /**
    * Providers the operator hid from the `/model` picker, GLOBAL for the whole
    * bot instance (not per-topic). The only lever that works for a provider
    * OpenCode enables from an environment variable (`openrouter` ←
@@ -1176,6 +1186,34 @@ export class StateStore {
     if (uniqueProviders.length > 0) this.state.hiddenModelProviders = uniqueProviders;
     else delete this.state.hiddenModelProviders;
     this.scheduleSave();
+  }
+
+  // ── instance-wide timezone (`/timezone`) ──
+
+  /**
+   * @description The stored operator timezone, or `null` when none is set (the
+   * caller then falls back to the host zone — see `utils/timezone.ts`
+   * `getEffectiveTimezone`). Deliberately NOT defaulted here: the store reports
+   * what is on disk, the resolution rule lives in one place outside it.
+   */
+  getTimezone(): string | null {
+    return this.state.timezone ?? null;
+  }
+
+  /**
+   * @description Store the operator timezone, or drop the field on `null`
+   * (reset to the host zone) so a default install leaves no trace in
+   * `state.json` — same shape discipline as {@link setModelProviderHidden}.
+   *
+   * Flushed eagerly rather than riding the debounced save loop: a zone change
+   * immediately recomputes every schedule's `nextRunAt`, and losing the zone
+   * while keeping the recomputed fire times would leave the two disagreeing
+   * after a crash.
+   */
+  async setTimezone(timezone: string | null): Promise<void> {
+    if (timezone === null) delete this.state.timezone;
+    else this.state.timezone = timezone;
+    await this.flush();
   }
 
   // ── per-thread display preferences (`/thinking`, `/tool-results`, `/subagent`) ──

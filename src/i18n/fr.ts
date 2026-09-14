@@ -173,6 +173,22 @@ export const frDict: Record<string, string> = {
   'language.auto_success': '✅ Langue réinitialisée en automatique. Actuelle : {display}.',
   'language.invalid': '⚠️ Locale `{locale}` non prise en charge. Disponibles : {locales}.',
 
+  'timezone.status': '🌍 Fuseau horaire : {zone} — il est {now}',
+  'timezone.usage':
+    'Utilisation : /timezone <zone IANA>  ·  /timezone +04:00  ·  /timezone auto\nOu envoie /timezone sans argument pour choisir dans une liste.',
+  'timezone.set_success': '✅ Fuseau horaire : {zone} — il est {now}\nPlanifications recalculées : {count}',
+  'timezone.auto_success':
+    '✅ Fuseau horaire réinitialisé sur celui de l’hôte : {zone} — il est {now}\nPlanifications recalculées : {count}',
+  'timezone.invalid':
+    '⚠️ Fuseau horaire `{zone}` inconnu. Utilise un nom IANA (par ex. `Europe/Moscow`) ou un décalage fixe (par ex. `+04:00`). Envoie /timezone pour choisir dans une liste.',
+  'timezone.offset_unsupported':
+    '⚠️ Le décalage `{zone}` ne peut pas être appliqué — seuls les décalages en heures entières fonctionnent. Utilise plutôt le nom IANA de ta zone (par exemple `Asia/Kolkata` pour +05:30).',
+  'timezone.fixed_offset_warning':
+    '⚠️ Un décalage fixe ne suit pas l’heure d’été — il sera décalé d’une heure la moitié de l’année.',
+  'timezone.picker_regions': '🌍 Fuseau horaire : {zone}\nMaintenant : {now}\n\nChoisis une région :',
+  'timezone.picker_zones': '🌍 {region} — page {page}/{total}',
+  'timezone.picker_expired': 'Cette liste est obsolète — renvoie /timezone.',
+
   'agent.ready': '{label} prêt dans `{subdir}`{argsSuffix}\n{infoBlock}Envoyez un message :',
   'agent.ready_model': '🧠 Modèle : {model}',
   'agent.no_session': 'Aucun agent en cours. /claude ou /opencode pour démarrer.',
@@ -427,10 +443,12 @@ export const frDict: Record<string, string> = {
   'schedule.resumedRebind': '▶️ Planifications reprises : {count} (prochain recalculé à partir de maintenant).',
   'schedule.noAgent':
     "⚠️ Rien de planifié — aucun agent n'est actif dans ce sujet, une exécution planifiée n'aurait donc rien à lancer. Démarre d'abord /claude ou /opencode.",
+  'schedule.currentTimeNote':
+    'Current time is {now} in timezone {zone}. Resolve every relative time phrasing ("tomorrow", "in 2 hours", "9am") against THAT clock — the schedule fires in the same timezone.',
   'schedule.forwardPromptTemplate':
-    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN FRENCH what you scheduled.\n\nRequest: {text}',
+    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN FRENCH what you scheduled.\n\n{timeNote}\n\nRequest: {text}',
   'schedule.interviewPromptTemplate':
-    'The user invoked /schedule with no details. Ask them IN FRENCH what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN FRENCH what you scheduled.',
+    'The user invoked /schedule with no details. Ask them IN FRENCH what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN FRENCH what you scheduled.\n\n{timeNote}',
 
   'apiRetry.transientNotice':
     '⏳ API limité en débit — nouvelle tentative automatique dans {minutes} min (tentative {attempt}).',

@@ -173,6 +173,22 @@ export const ptDict: Record<string, string> = {
   'language.auto_success': '✅ Idioma reposto para automático. Atual: {display}.',
   'language.invalid': '⚠️ A locale `{locale}` não é suportada. Disponíveis: {locales}.',
 
+  'timezone.status': '🌍 Fuso horário: {zone} — agora {now}',
+  'timezone.usage':
+    'Utilização: /timezone <zona IANA>  ·  /timezone +04:00  ·  /timezone auto\nOu envia /timezone sem argumento para escolher de uma lista.',
+  'timezone.set_success': '✅ Fuso horário: {zone} — agora {now}\nAgendamentos recalculados: {count}',
+  'timezone.auto_success':
+    '✅ Fuso horário reposto para o do host: {zone} — agora {now}\nAgendamentos recalculados: {count}',
+  'timezone.invalid':
+    '⚠️ Fuso horário `{zone}` desconhecido. Usa um nome IANA (p. ex. `Europe/Moscow`) ou um desvio fixo (p. ex. `+04:00`). Envia /timezone para escolher de uma lista.',
+  'timezone.offset_unsupported':
+    '⚠️ O desvio `{zone}` não pode ser aplicado — só funcionam desvios de horas inteiras. Usa antes o nome IANA do teu fuso (por exemplo, `Asia/Kolkata` para +05:30).',
+  'timezone.fixed_offset_warning':
+    '⚠️ Um desvio fixo não acompanha a hora de verão — fica uma hora errado metade do ano.',
+  'timezone.picker_regions': '🌍 Fuso horário: {zone}\nAgora: {now}\n\nEscolhe uma região:',
+  'timezone.picker_zones': '🌍 {region} — página {page}/{total}',
+  'timezone.picker_expired': 'Essa lista está desatualizada — envia /timezone outra vez.',
+
   'agent.ready': '{label} pronto em `{subdir}`{argsSuffix}\n{infoBlock}Envia uma mensagem:',
   'agent.ready_model': '🧠 Modelo: {model}',
   'agent.no_session': 'Sem agente em execução. /claude ou /opencode para iniciar.',
@@ -427,10 +443,12 @@ export const ptDict: Record<string, string> = {
   'schedule.resumedRebind': '▶️ Agendamentos retomados: {count} (próximo recalculado a partir de agora).',
   'schedule.noAgent':
     '⚠️ Nada agendado — nenhum agente está ativo neste tópico, então uma execução agendada não teria nada para iniciar. Inicie /claude ou /opencode primeiro.',
+  'schedule.currentTimeNote':
+    'Current time is {now} in timezone {zone}. Resolve every relative time phrasing ("tomorrow", "in 2 hours", "9am") against THAT clock — the schedule fires in the same timezone.',
   'schedule.forwardPromptTemplate':
-    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN PORTUGUESE what you scheduled.\n\nRequest: {text}',
+    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN PORTUGUESE what you scheduled.\n\n{timeNote}\n\nRequest: {text}',
   'schedule.interviewPromptTemplate':
-    'The user invoked /schedule with no details. Ask them IN PORTUGUESE what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN PORTUGUESE what you scheduled.',
+    'The user invoked /schedule with no details. Ask them IN PORTUGUESE what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN PORTUGUESE what you scheduled.\n\n{timeNote}',
 
   'apiRetry.transientNotice':
     '⏳ API limitada por taxa — nova tentativa automática em {minutes} min (tentativa {attempt}).',

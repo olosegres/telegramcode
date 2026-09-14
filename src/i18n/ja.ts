@@ -173,6 +173,22 @@ export const jaDict: Record<string, string> = {
   'language.auto_success': '✅ 言語を自動に戻しました。現在: {display}。',
   'language.invalid': '⚠️ locale `{locale}` はサポートされていません。利用可能: {locales}。',
 
+  'timezone.status': '🌍 タイムゾーン: {zone} — 現在 {now}',
+  'timezone.usage':
+    '使い方: /timezone <IANA ゾーン>  ·  /timezone +04:00  ·  /timezone auto\nまたは引数なしで /timezone を送ると一覧から選べます。',
+  'timezone.set_success': '✅ タイムゾーン: {zone} — 現在 {now}\n再計算したスケジュール: {count}',
+  'timezone.auto_success':
+    '✅ タイムゾーンをホストのゾーンにリセットしました: {zone} — 現在 {now}\n再計算したスケジュール: {count}',
+  'timezone.invalid':
+    '⚠️ 不明なタイムゾーン `{zone}`。IANA 名（例: `Europe/Moscow`）か固定オフセット（例: `+04:00`）を指定してください。/timezone を送ると一覧から選べます。',
+  'timezone.offset_unsupported':
+    '⚠️ オフセット `{zone}` は適用できません — 1時間単位のオフセットのみ有効です。代わりにゾーンの IANA 名を指定してください（+05:30 なら `Asia/Kolkata`）。',
+  'timezone.fixed_offset_warning':
+    '⚠️ 固定オフセットは夏時間に追従しません — 半年は1時間ずれます。',
+  'timezone.picker_regions': '🌍 タイムゾーン: {zone}\n現在: {now}\n\n地域を選択:',
+  'timezone.picker_zones': '🌍 {region} — ページ {page}/{total}',
+  'timezone.picker_expired': 'この一覧は古くなっています — もう一度 /timezone を送ってください。',
+
   'agent.ready': '{label} が `{subdir}`{argsSuffix} で準備完了\n{infoBlock}メッセージを送信:',
   'agent.ready_model': '🧠 モデル: {model}',
   'agent.no_session': 'エージェントが実行中ではありません。/claude または /opencode で起動。',
@@ -427,10 +443,12 @@ export const jaDict: Record<string, string> = {
   'schedule.resumedRebind': '▶️ スケジュールを再開: {count}（次回実行は現在時刻から再計算）。',
   'schedule.noAgent':
     '⚠️ 何もスケジュールされませんでした — このトピックで実行中のエージェントがないため、スケジュール実行で起動するものがありません。まず /claude または /opencode を開始してください。',
+  'schedule.currentTimeNote':
+    'Current time is {now} in timezone {zone}. Resolve every relative time phrasing ("tomorrow", "in 2 hours", "9am") against THAT clock — the schedule fires in the same timezone.',
   'schedule.forwardPromptTemplate':
-    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN JAPANESE what you scheduled.\n\nRequest: {text}',
+    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN JAPANESE what you scheduled.\n\n{timeNote}\n\nRequest: {text}',
   'schedule.interviewPromptTemplate':
-    'The user invoked /schedule with no details. Ask them IN JAPANESE what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN JAPANESE what you scheduled.',
+    'The user invoked /schedule with no details. Ask them IN JAPANESE what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN JAPANESE what you scheduled.\n\n{timeNote}',
 
   'apiRetry.transientNotice':
     '⏳ API レート制限 — {minutes} 分後に自動再試行します（試行 {attempt}）。',

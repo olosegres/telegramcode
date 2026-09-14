@@ -173,6 +173,22 @@ export const zhDict: Record<string, string> = {
   'language.auto_success': '✅ 语言已重置为自动。当前：{display}。',
   'language.invalid': '⚠️ 不支持 locale `{locale}`。可用：{locales}。',
 
+  'timezone.status': '🌍 时区：{zone} — 当前 {now}',
+  'timezone.usage':
+    '用法：/timezone <IANA 时区>  ·  /timezone +04:00  ·  /timezone auto\n或直接发送 /timezone（不带参数）从列表中选择。',
+  'timezone.set_success': '✅ 时区：{zone} — 当前 {now}\n已重新计算的计划任务：{count}',
+  'timezone.auto_success':
+    '✅ 时区已重置为主机时区：{zone} — 当前 {now}\n已重新计算的计划任务：{count}',
+  'timezone.invalid':
+    '⚠️ 未知时区 `{zone}`。请使用 IANA 名称（如 `Europe/Moscow`）或固定偏移（如 `+04:00`）。发送 /timezone 可从列表中选择。',
+  'timezone.offset_unsupported':
+    '⚠️ 偏移 `{zone}` 无法生效——只有整小时偏移可用。请改用所在时区的 IANA 名称（例如 +05:30 对应 `Asia/Kolkata`）。',
+  'timezone.fixed_offset_warning':
+    '⚠️ 固定偏移不跟随夏令时——半年内会相差一小时。',
+  'timezone.picker_regions': '🌍 时区：{zone}\n当前：{now}\n\n请选择区域：',
+  'timezone.picker_zones': '🌍 {region} — 第 {page}/{total} 页',
+  'timezone.picker_expired': '该列表已过期——请重新发送 /timezone。',
+
   'agent.ready': '{label} 已就绪，在 `{subdir}`{argsSuffix}\n{infoBlock}发送消息：',
   'agent.ready_model': '🧠 模型：{model}',
   'agent.no_session': '没有运行中的代理。运行 /claude 或 /opencode 启动。',
@@ -427,10 +443,12 @@ export const zhDict: Record<string, string> = {
   'schedule.resumedRebind': '▶️ 已恢复的定时任务: {count}（下次运行从现在重新计算）。',
   'schedule.noAgent':
     '⚠️ 未创建任何计划 — 此话题中没有运行中的代理，因此计划运行将无内容可启动。请先启动 /claude 或 /opencode。',
+  'schedule.currentTimeNote':
+    'Current time is {now} in timezone {zone}. Resolve every relative time phrasing ("tomorrow", "in 2 hours", "9am") against THAT clock — the schedule fires in the same timezone.',
   'schedule.forwardPromptTemplate':
-    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN CHINESE what you scheduled.\n\nRequest: {text}',
+    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN CHINESE what you scheduled.\n\n{timeNote}\n\nRequest: {text}',
   'schedule.interviewPromptTemplate':
-    'The user invoked /schedule with no details. Ask them IN CHINESE what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN CHINESE what you scheduled.',
+    'The user invoked /schedule with no details. Ask them IN CHINESE what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN CHINESE what you scheduled.\n\n{timeNote}',
 
   'apiRetry.transientNotice':
     '⏳ API 速率受限 — {minutes} 分钟后自动重试（第 {attempt} 次）。',

@@ -99,3 +99,32 @@ test('prependThreadContextPreamble: glues the preamble ahead of the prompt with 
   assert.ok(combined.endsWith('do the thing'), 'prompt comes last');
   assert.ok(combined.includes('\n\ndo the thing'), 'blank-line separator between block and prompt');
 });
+
+test('buildThreadContextPreamble: carries the timezone on the thread line when supplied', () => {
+  // The agent has no clock context of its own. The ZONE rides the preamble (it
+  // is static for a session, so it costs no extra injections), while the
+  // current INSTANT deliberately stays on the per-prompt paths.
+  const preamble = buildThreadContextPreamble({
+    key,
+    subdir: 'someProject',
+    timezone: 'Europe/Moscow',
+  });
+
+  assert.equal(
+    preamble,
+    [
+      threadContextPreambleHeader,
+      'thread: -1001111111111:9085 | folder: someProject | timezone: Europe/Moscow',
+    ].join('\n'),
+  );
+});
+
+test('buildThreadContextPreamble: a timezone change re-injects the preamble', () => {
+  // The marker comparison is the whole injection rule, so a zone change has to
+  // alter the built text or the agent would keep the OLD zone for the rest of
+  // the session.
+  const before = buildThreadContextPreamble({ key, subdir: 'p', timezone: 'UTC' });
+  const after = buildThreadContextPreamble({ key, subdir: 'p', timezone: 'Europe/Moscow' });
+  assert.notEqual(before, after);
+  assert.equal(checkShouldInjectPreamble(after, before), true);
+});

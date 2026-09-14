@@ -26,6 +26,7 @@ setup, no extra dashboards — direct access to your own **OpenCode** /
 - **Voice input** — Whisper transcription via Groq (preferred) or OpenAI
 - **Display verbosity** — `/verbosity` (plus `/thinking`, `/tool_results`, `/subagent`) per topic: `minimal|short|full`
 - **Time-aware prompts** — `/timestamps on` prepends each forwarded prompt's send time (local-offset ISO), so a days-long session knows what "yesterday" or "2 days ago" means; agent-facing only, per topic
+- **Your timezone** — `/timezone Europe/Moscow` once, and schedules fire at your wall-clock time while the agent is told what time it actually is; no server-clock guessing
 
 ## Two surfaces: group topics, bot DM, or both
 
@@ -312,6 +313,7 @@ actually start an agent or terminal in the folder.
 | `/trace` | Output-trace recorder (`on`/`off`, `on all`/`off all`; bare = status) — see [Observability](#observability) |
 | `/timestamps` | Prepend the send time to prompts forwarded to the agent (`on`/`off`; bare = status) |
 | `/language`, `/lang` | Set the bot UI language for this chat; bare opens an endonym picker (sorted A→Z by English name), `/language auto` returns to automatic per-chat detection |
+| `/timezone` | Set the timezone every clock the bot touches speaks in — schedules, agent time context, time renders. `/timezone Europe/Moscow`, `/timezone +04:00`, `/timezone auto` (host zone); bare opens a region → zone picker. Instance-wide, not per chat |
 | `/pair` | Bind this forum supergroup to the bot (re-point auto-pairing) — works from any topic of the target group; a numeric `ALLOWED_GROUP_ID` env locks pairing |
 
 ### General-only
@@ -418,6 +420,31 @@ the agent:
 - **`/timestamps on`** — prepends each forwarded prompt's send time
   (local-offset ISO) so a days-long session knows what "yesterday" means.
   Agent-facing only, default off, persisted per topic.
+
+## Timezone
+
+The bot runs on the host clock, which on a typical server is UTC. `/timezone`
+declares yours ONCE, instance-wide, and every clock the bot touches follows:
+
+- **Schedules** fire at your wall-clock time. Changing the zone PRESERVES the
+  wall clock — "9am" stays 9am rather than drifting by the offset — and every
+  job's next run is recomputed on the spot (an expired one-shot is dropped).
+- **The agent** is told the current time and zone with each `/schedule` request,
+  and carries the zone in its thread-context preamble, so "remind me tomorrow at
+  9" resolves against your clock instead of the model's assumption.
+- **Time renders** — "missed at HH:MM", schedule descriptions, `/timestamps`
+  injection and the `schedule_list` next-run stamp all read in your zone.
+
+```
+/timezone Europe/Moscow     # IANA name
+/timezone +04:00            # fixed offset (accepted; does not follow DST)
+/timezone                   # region → zone picker
+/timezone auto              # back to the host zone
+```
+
+The current zone and its wall clock also show in `/status`. Nothing is stored
+until you set one, so an install that never runs `/timezone` behaves exactly as
+it did before.
 
 ## Environment Variables
 

@@ -173,6 +173,22 @@ export const kaDict: Record<string, string> = {
   'language.auto_success': '✅ ენა დაბრუნდა ავტომატურ რეჟიმზე. მიმდინარე: {display}.',
   'language.invalid': '⚠️ locale `{locale}` არ არის მხარდაჭერილი. ხელმისაწვდომია: {locales}.',
 
+  'timezone.status': '🌍 დროის სარტყელი: {zone} — ახლა {now}',
+  'timezone.usage':
+    'გამოყენება: /timezone <IANA სარტყელი>  ·  /timezone +04:00  ·  /timezone auto\nან გამოაგზავნეთ /timezone არგუმენტის გარეშე სიიდან ასარჩევად.',
+  'timezone.set_success': '✅ დროის სარტყელი: {zone} — ახლა {now}\nგადათვლილი განრიგები: {count}',
+  'timezone.auto_success':
+    '✅ დროის სარტყელი დაბრუნდა ჰოსტის სარტყელზე: {zone} — ახლა {now}\nგადათვლილი განრიგები: {count}',
+  'timezone.invalid':
+    '⚠️ უცნობი დროის სარტყელი `{zone}`. გამოიყენეთ IANA სახელი (მაგ. `Europe/Moscow`) ან ფიქსირებული წანაცვლება (მაგ. `+04:00`). სიიდან ასარჩევად გამოაგზავნეთ /timezone.',
+  'timezone.offset_unsupported':
+    '⚠️ წანაცვლება `{zone}` ვერ გამოიყენება — მუშაობს მხოლოდ მთელი საათის წანაცვლებები. ამის ნაცვლად მიუთითე შენი სარტყლის IANA სახელი (მაგალითად, `Asia/Kolkata` +05:30-ისთვის).',
+  'timezone.fixed_offset_warning':
+    '⚠️ ფიქსირებული წანაცვლება ზაფხულის დროს არ მიჰყვება — წელიწადის ნახევარი ერთი საათით აცდება.',
+  'timezone.picker_regions': '🌍 დროის სარტყელი: {zone}\nახლა: {now}\n\nაირჩიეთ რეგიონი:',
+  'timezone.picker_zones': '🌍 {region} — გვერდი {page}/{total}',
+  'timezone.picker_expired': 'ეს სია მოძველდა — გამოაგზავნეთ /timezone ხელახლა.',
+
   'agent.ready': '{label} მზადაა `{subdir}`{argsSuffix}-ში\n{infoBlock}გამოგვიგზავნეთ შეტყობინება:',
   'agent.ready_model': '🧠 მოდელი: {model}',
   'agent.no_session': 'აგენტი არ არის გაშვებული. /claude ან /opencode გასაშვებად.',
@@ -427,10 +443,12 @@ export const kaDict: Record<string, string> = {
   'schedule.resumedRebind': '▶️ განრიგები გაგრძელდა: {count} (შემდეგი გაშვება ხელახლა გამოითვლება ახლანდელი დროიდან).',
   'schedule.noAgent':
     '⚠️ არაფერი დაიგეგმა — ამ თემაში არცერთი აგენტი არ მუშაობს, ამიტომ დაგეგმილ გაშვებას გასაშვები არაფერი ექნება. ჯერ გაუშვით /claude ან /opencode.',
+  'schedule.currentTimeNote':
+    'Current time is {now} in timezone {zone}. Resolve every relative time phrasing ("tomorrow", "in 2 hours", "9am") against THAT clock — the schedule fires in the same timezone.',
   'schedule.forwardPromptTemplate':
-    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN GEORGIAN what you scheduled.\n\nRequest: {text}',
+    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN GEORGIAN what you scheduled.\n\n{timeNote}\n\nRequest: {text}',
   'schedule.interviewPromptTemplate':
-    'The user invoked /schedule with no details. Ask them IN GEORGIAN what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN GEORGIAN what you scheduled.',
+    'The user invoked /schedule with no details. Ask them IN GEORGIAN what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN GEORGIAN what you scheduled.\n\n{timeNote}',
 
   'apiRetry.transientNotice':
     '⏳ API სიხშირით შეზღუდული — ავტომატური ხელახლე ცდა {minutes} წუთში (მცდელობა {attempt}).',

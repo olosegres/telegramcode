@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { StateStore } from '../state';
 import { keyFromString, type ThreadKey } from '../types';
 import type { SendFilesToThread } from '../utils/fileSendService';
+import { formatIsoLocalOffset } from '../utils/isoTimestamp';
 import {
   maxDiscreteMessages,
   type DiscreteMessageItem,
@@ -606,7 +607,10 @@ function deliveryUnknownResult(message: string): CallToolResult {
 
 /** One-line human summary of a record for `schedule_list` / create confirmations. */
 function summarizeRecord(record: ScheduleRecord): string {
-  const next = record.nextRunAt !== null ? new Date(record.nextRunAt).toISOString() : 'none';
+  // Local-offset ISO, never `toISOString()`'s UTC `Z`: the operator declared a
+  // timezone and the agent reads this back to them, so a next-run stamp in some
+  // other zone than the one the job actually fires in is actively misleading.
+  const next = record.nextRunAt !== null ? formatIsoLocalOffset(record.nextRunAt) : 'none';
   const pausedNote = record.isPaused ? ' [paused]' : '';
   return `${record.name} (id: ${record.id}) — ${describeSchedule(record.spec)}; next run: ${next}${pausedNote}`;
 }

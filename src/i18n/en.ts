@@ -177,6 +177,22 @@ export const enDict: Record<string, string> = {
   'language.auto_success': '✅ Language reset to auto. Current: {display}.',
   'language.invalid': '⚠️ Locale `{locale}` is not supported. Available: {locales}.',
 
+  'timezone.status': '🌍 Timezone: {zone} — now {now}',
+  'timezone.usage':
+    'Usage: /timezone <IANA zone>  ·  /timezone +04:00  ·  /timezone auto\nOr send /timezone with no argument to pick from a list.',
+  'timezone.set_success': '✅ Timezone: {zone} — now {now}\nSchedules recomputed: {count}',
+  'timezone.auto_success':
+    '✅ Timezone reset to the host zone: {zone} — now {now}\nSchedules recomputed: {count}',
+  'timezone.invalid':
+    '⚠️ Unknown timezone `{zone}`. Use an IANA name (e.g. `Europe/Moscow`) or a fixed offset (e.g. `+04:00`). Send /timezone to pick from a list.',
+  'timezone.offset_unsupported':
+    '⚠️ The offset `{zone}` cannot be applied — only whole-hour offsets take effect. Use your zone\'s IANA name instead (e.g. `Asia/Kolkata` for +05:30).',
+  'timezone.fixed_offset_warning':
+    '⚠️ A fixed offset does not follow daylight saving time — it will be an hour off for half the year.',
+  'timezone.picker_regions': '🌍 Timezone: {zone}\nNow: {now}\n\nPick a region:',
+  'timezone.picker_zones': '🌍 {region} — page {page}/{total}',
+  'timezone.picker_expired': 'That list is out of date — send /timezone again.',
+
   'agent.ready': '{label} ready in `{subdir}`{argsSuffix}\n{infoBlock}Send a message:',
   'agent.ready_model': '🧠 Model: {model}',
   'agent.no_session': 'No agent running. /claude or /opencode to start.',
@@ -432,10 +448,12 @@ export const enDict: Record<string, string> = {
   'schedule.resumedRebind': '▶️ Schedules resumed: {count} (next run recomputed from now).',
   'schedule.noAgent':
     '⚠️ Nothing scheduled — no agent is running in this topic, so a scheduled run would have nothing to launch. Start /claude or /opencode first.',
+  'schedule.currentTimeNote':
+    'Current time is {now} in timezone {zone}. Resolve every relative time phrasing ("tomorrow", "in 2 hours", "9am") against THAT clock — the schedule fires in the same timezone.',
   'schedule.forwardPromptTemplate':
-    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN ENGLISH what you scheduled.\n\nRequest: {text}',
+    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN ENGLISH what you scheduled.\n\n{timeNote}\n\nRequest: {text}',
   'schedule.interviewPromptTemplate':
-    'The user invoked /schedule with no details. Ask them IN ENGLISH what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN ENGLISH what you scheduled.',
+    'The user invoked /schedule with no details. Ask them IN ENGLISH what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN ENGLISH what you scheduled.\n\n{timeNote}',
 
   'apiRetry.transientNotice':
     '⏳ API rate-limited — auto-retrying in {minutes} min (attempt {attempt}).',

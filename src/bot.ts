@@ -88,6 +88,26 @@ import {
 import { classifyBoot } from './bootClassifier';
 import { defaultLocale, formatLanguageDisplay, localeCodes, normalizeLocale, runWithLocale, t, type Locale } from './i18n';
 import { buildLanguagePicker, languageAutoCallback } from './utils/languagePicker';
+import {
+  applyProcessTimezone,
+  checkIsApplicableTimezone,
+  checkIsFixedOffsetZone,
+  formatZoneNow,
+  formatZoneNowWithDate,
+  getCanonicalTimezone,
+  getEffectiveTimezone,
+  getHostTimezone,
+} from './utils/timezone';
+import {
+  buildTimezoneRegionPicker,
+  buildTimezoneZonePicker,
+  getTimezoneAt,
+  regionPageCallbackRe,
+  timezoneAutoCallback,
+  timezonePickerBackCallback,
+  zonePickCallbackRe,
+} from './utils/timezonePicker';
+import { recomputeSchedulesForTimezoneChange } from './scheduler/timezoneRecompute';
 import { validateSubdir, resolveBoundWorkDir, BindError, findAutobindSubdir, paginateBindList } from './validation';
 import { paginateList } from './utils/paginateList';
 import {
@@ -4586,6 +4606,7 @@ function getPromptWithThreadContext(key: ThreadKey, text: string): string {
     groupTitle: getPreambleGroupTitle(key),
     key,
     subdir,
+    timezone: getCurrentTimezone(),
   });
 
   const kStr = keyToString(key);
@@ -4768,7 +4789,12 @@ command('status', async (_ctx, key) => {
       persistedModel: agent?.model ?? null,
     });
   }
-  await replyToThread(key, getThreadStatusReport({ agentLine, subdir, isActive, workDir, model, effort, startedAt, runtime }));
+  const timezone = getCurrentTimezone();
+  await replyToThread(key, getThreadStatusReport({
+    agentLine, subdir, isActive, workDir, model, effort, startedAt, runtime,
+    timezone,
+    timezoneNow: formatZoneNow(timezone, Date.now()),
+  }));
 });
 
 function getLanguageCommandArg(text: string): string {
@@ -4806,6 +4832,107 @@ command(['language', 'lang'], async (ctx, key) => {
     t('language.status', { display: formatLanguageDisplay(resolved) }),
     buildLanguagePicker(override),
   );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  /timezone — the instance-wide operator timezone
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * @description The zone in effect right now: the stored `/timezone` pick, else
+ * the host zone. Single read point so no call site re-derives the fallback.
+ */
+function getCurrentTimezone(): string {
+  return getEffectiveTimezone(state.getTimezone());
+}
+
+/**
+ * @description Apply a zone change end to end and render its confirmation.
+ *
+ * Order is load-bearing: persist → apply to the process → THEN recompute the
+ * schedules. The recompute derives each job's next occurrence from the current
+ * clock, so it must run after `process.env.TZ` has been re-based, or every job
+ * would be re-based against the OLD zone.
+ *
+ * `null` resets to the host zone. The recompute deliberately goes through
+ * {@link recomputeSchedulesForTimezoneChange} rather than the engine's
+ * `rearmAll()`, which would read the now-stale stored `nextRunAt` values as
+ * missed runs and fire catch-up announcements into every topic.
+ */
+async function applyTimezoneSelection(timezone: string | null): Promise<string> {
+  await state.setTimezone(timezone);
+  applyProcessTimezone(timezone);
+
+  const recompute = schedulerEngine
+    ? await recomputeSchedulesForTimezoneChange({
+        store: state,
+        engine: schedulerEngine,
+        now: () => Date.now(),
+      })
+    : { recomputed: 0, removed: 0 };
+
+  const zone = getEffectiveTimezone(timezone);
+  const vars = { zone, now: formatZoneNow(zone, Date.now()), count: recompute.recomputed };
+  const lines = [
+    timezone === null ? t('timezone.auto_success', vars) : t('timezone.set_success', vars),
+  ];
+  // A fixed offset is a legitimate pick (Intl accepts it) but silently goes an
+  // hour wrong across a DST boundary, so say so instead of rejecting it.
+  if (timezone !== null && checkIsFixedOffsetZone(timezone)) {
+    lines.push(t('timezone.fixed_offset_warning'));
+  }
+  return lines.join('\n');
+}
+
+/** The inline keyboard shape both `/timezone` picker levels produce. */
+type TimezonePickerKeyboard = ReturnType<typeof buildTimezoneRegionPicker>;
+
+/** Header + keyboard for the level-1 (regions) picker view. */
+function buildTimezoneRegionView(): { text: string; keyboard: TimezonePickerKeyboard } {
+  const zone = getCurrentTimezone();
+  return {
+    text: t('timezone.picker_regions', { zone, now: formatZoneNowWithDate(zone, Date.now()) }),
+    keyboard: buildTimezoneRegionPicker(state.getTimezone()),
+  };
+}
+
+/**
+ * @description The `/timezone` argument, preserved VERBATIM (not lowercased,
+ * unlike `/language`'s locale codes): zone names are canonicalized by `Intl`
+ * downstream, and a fixed offset like `+04:00` has no case to normalize.
+ */
+function getTimezoneCommandArg(text: string): string {
+  const [_command, arg = ''] = stripCommandBotMention(text.trim()).split(/\s+/, 2);
+  return arg.trim();
+}
+
+command('timezone', async (ctx, key) => {
+  const arg = getTimezoneCommandArg(ctx.message.text);
+
+  if (arg.toLowerCase() === 'auto' || arg.toLowerCase() === 'reset') {
+    await replyToThread(key, await applyTimezoneSelection(null));
+    return;
+  }
+
+  if (arg) {
+    const canonical = getCanonicalTimezone(arg);
+    if (canonical === null) {
+      await replyToThread(key, `${t('timezone.invalid', { zone: arg })}\n${t('timezone.usage')}`);
+      return;
+    }
+    // `Intl` accepts an offset like `+05:30`, but `process.env.TZ` has no
+    // spelling for it — applying it would leave the process on UTC while the
+    // confirmation reported `+05:30`. Refuse rather than accept a no-op.
+    if (!checkIsApplicableTimezone(canonical)) {
+      await replyToThread(key, `${t('timezone.offset_unsupported', { zone: canonical })}\n${t('timezone.usage')}`);
+      return;
+    }
+    await replyToThread(key, await applyTimezoneSelection(canonical));
+    return;
+  }
+
+  const view = buildTimezoneRegionView();
+  await replyToThread(key, view.text, view.keyboard);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -7268,9 +7395,17 @@ command('timestamps', async (ctx, key) => {
  */
 command('schedule', async (ctx, key) => {
   const text = ctx.message.text.split(' ').slice(1).join(' ').trim();
+  // The agent has no clock of its own, so the wrapper carries the CURRENT
+  // instant + zone: without it "tomorrow at 9" resolves against whatever the
+  // model assumes rather than the zone the schedule will actually fire in.
+  const zone = getCurrentTimezone();
+  const timeNote = t('schedule.currentTimeNote', {
+    now: formatZoneNowWithDate(zone, Date.now()),
+    zone,
+  });
   const wrappedPrompt = text
-    ? t('schedule.forwardPromptTemplate', { text })
-    : t('schedule.interviewPromptTemplate');
+    ? t('schedule.forwardPromptTemplate', { text, timeNote })
+    : t('schedule.interviewPromptTemplate', { timeNote });
 
   const result = await ensureAgentSession(key);
   if (!result.ok) {
@@ -7372,7 +7507,7 @@ const botCommands = new Set([
   'start', 'claude', 'opencode', 'oc', 'terminal', 'agent', 'sessions', 'resume', 'cancel', 'model', 'connect',
   'disconnect', 'stop', 'stopall', 'stop-all', 'status', 'c', 'y', 'n', 'enter', 'up', 'down', 'tab', 'esc', 'escape', 'output', 'clear_messages',
   'bind', 'unbind', 'where', 'ls', 'list', 'new', 'clear_session', 'whoami', 'version', 'help', 'language', 'lang',
-  'doctor', 'mcp', 'rename_session', 'compact', 'trace', 'timestamps', 'schedule', 'thinking', 'tool_results',
+  'doctor', 'mcp', 'rename_session', 'compact', 'trace', 'timestamps', 'timezone', 'schedule', 'thinking', 'tool_results',
   'subagent', 'claude_mode', 'effort', 'verbosity', 'quit', 'q', 'quit-all', 'quitall', 'pair',
 ]);
 
@@ -8477,6 +8612,84 @@ bot.action(/^lang_(.+)$/, async (ctx) => {
   await state.setChatLocaleOverride(key.chatId, locale);
   await ctx.answerCbQuery();
   await confirmLanguageSelection(ctx);
+});
+
+// ─── /timezone inline picker callbacks ───────────────────────────────────────
+//
+// Registration order matters exactly as it does for `/language`: the literal
+// `tzauto` / `tzback` ids are registered BEFORE the generic `tz_(\d+)_(\d+)`
+// matcher (first-match-wins in Telegraf).
+
+/**
+ * @description Replace the picker message in place with `text` + `keyboard`,
+ * or with `text` alone (keyboard dropped) when none is given — the same
+ * "menu disappears once a choice is made" finish `/language` uses.
+ */
+async function editTimezonePickerMessage(
+  ctx: Context,
+  text: string,
+  keyboard?: TimezonePickerKeyboard,
+): Promise<void> {
+  try {
+    await ctx.editMessageText(text, keyboard);
+  } catch (e) {
+    const desc = checkIsApiError(e) ? getErrorDescription(e) : '';
+    if (!/message is not modified/i.test(desc)) console.warn('[tz_cb] edit failed:', desc || e);
+  }
+}
+
+/** Finalise a zone pick: confirm in place and drop the keyboard. */
+async function confirmTimezoneSelection(ctx: Context, timezone: string | null): Promise<void> {
+  await editTimezonePickerMessage(ctx, await applyTimezoneSelection(timezone));
+}
+
+bot.action(timezoneAutoCallback, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  await ctx.answerCbQuery();
+  await confirmTimezoneSelection(ctx, null);
+});
+
+bot.action(timezonePickerBackCallback, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  await ctx.answerCbQuery();
+  const view = buildTimezoneRegionView();
+  await editTimezonePickerMessage(ctx, view.text, view.keyboard);
+});
+
+// Region tapped (or a page arrow) → render that region's zone page.
+bot.action(regionPageCallbackRe, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  const render = buildTimezoneZonePicker(
+    Number(ctx.match[1]),
+    Number(ctx.match[2]),
+    state.getTimezone(),
+  );
+  if (!render) { await ctx.answerCbQuery(t('timezone.picker_expired')); return; }
+  await ctx.answerCbQuery();
+  await editTimezonePickerMessage(
+    ctx,
+    t('timezone.picker_zones', {
+      region: render.region,
+      // Pages are zero-based on the wire and one-based for humans.
+      page: render.currentPage + 1,
+      total: render.totalPages,
+    }),
+    render.keyboard,
+  );
+});
+
+// Zone tapped → set it. A stale index that no longer resolves answers
+// "expired" rather than silently applying a neighbouring zone.
+bot.action(zonePickCallbackRe, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  const timezone = getTimezoneAt(Number(ctx.match[1]), Number(ctx.match[2]));
+  if (timezone === null) { await ctx.answerCbQuery(t('timezone.picker_expired')); return; }
+  await ctx.answerCbQuery();
+  await confirmTimezoneSelection(ctx, timezone);
 });
 
 /**
@@ -10369,6 +10582,7 @@ export const COMMANDS_MENU = [
   { command: 'trace', description: '🛰 Output-trace recorder on/off' },
   { command: 'timestamps', description: '🕒 Prepend send time to forwarded prompts' },
   { command: 'language', description: '🌐 Bot language for this chat/group' },
+  { command: 'timezone', description: '🌍 Timezone for schedules and time context' },
   { command: 'whoami', description: '🪪 Show debug ids' },
   { command: 'pair', description: '🔗 Bind this group to the bot' },
   { command: 'version', description: 'ℹ️ Versions of bot + CLI tools' },
@@ -11251,6 +11465,15 @@ export async function startBot(): Promise<void> {
   // exact line across instances.
   state = await getStateStore();
   console.log(`[startup] DATA_DIR=${path.dirname(state.stateFilePath)}`);
+
+  // 1a. Apply the operator's timezone to the PROCESS, right after the store
+  //     loads and before anything reads a clock. Assigning `process.env.TZ`
+  //     re-bases `Date`/`Intl`, so every host-local render downstream (cron fire
+  //     times, "missed at", `/timestamps`, schedule descriptions) speaks the
+  //     operator's zone with no per-call-site threading. Nothing stored ⇒ the
+  //     environment is left exactly as launched.
+  applyProcessTimezone(state.getTimezone());
+  console.log(`Timezone:         ${getEffectiveTimezone(state.getTimezone())} (host: ${getHostTimezone()})`);
 
   // Snapshot the persisted transient status-frame ids (S2) NOW, before reattach
   // can run any frame-id setter. A reattached session's first frame lifecycle

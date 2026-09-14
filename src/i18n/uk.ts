@@ -179,6 +179,22 @@ export const ukDict: Record<string, string> = {
   'language.auto_success': '✅ Мову скинуто на авто. Зараз: {display}.',
   'language.invalid': '⚠️ Локаль `{locale}` не підтримується. Доступні: {locales}.',
 
+  'timezone.status': '🌍 Часовий пояс: {zone} — зараз {now}',
+  'timezone.usage':
+    'Використання: /timezone <зона IANA>  ·  /timezone +04:00  ·  /timezone auto\nАбо надішли /timezone без аргументу, щоб обрати зі списку.',
+  'timezone.set_success': '✅ Часовий пояс: {zone} — зараз {now}\nПерераховано розкладів: {count}',
+  'timezone.auto_success':
+    '✅ Часовий пояс скинуто на зону хоста: {zone} — зараз {now}\nПерераховано розкладів: {count}',
+  'timezone.invalid':
+    '⚠️ Невідомий часовий пояс `{zone}`. Укажи назву IANA (наприклад, `Europe/Moscow`) або фіксоване зміщення (наприклад, `+04:00`). Надішли /timezone, щоб обрати зі списку.',
+  'timezone.offset_unsupported':
+    '⚠️ Зміщення `{zone}` застосувати не можна — працюють лише зміщення, кратні цілій годині. Вкажи натомість назву зони IANA (наприклад, `Asia/Kolkata` для +05:30).',
+  'timezone.fixed_offset_warning':
+    '⚠️ Фіксоване зміщення не враховує перехід на літній час — пів року воно помилятиметься на годину.',
+  'timezone.picker_regions': '🌍 Часовий пояс: {zone}\nЗараз: {now}\n\nОбери регіон:',
+  'timezone.picker_zones': '🌍 {region} — сторінка {page}/{total}',
+  'timezone.picker_expired': 'Цей список застарів — надішли /timezone ще раз.',
+
   'agent.ready': '{label} готовий у `{subdir}`{argsSuffix}\n{infoBlock}Надішли повідомлення:',
   'agent.ready_model': '🧠 Модель: {model}',
   'agent.no_session': 'Агент не запущений. /claude або /opencode — щоб запустити.',
@@ -433,10 +449,12 @@ export const ukDict: Record<string, string> = {
   'schedule.resumedRebind': '▶️ Розкладів відновлено: {count} (наступний запуск перераховано від поточного моменту).',
   'schedule.noAgent':
     '⚠️ Нічого не заплановано — у цій темі не запущено жодного агента, тож запланованому запуску не буде чого запускати. Спочатку запустіть /claude або /opencode.',
+  'schedule.currentTimeNote':
+    'Current time is {now} in timezone {zone}. Resolve every relative time phrasing ("tomorrow", "in 2 hours", "9am") against THAT clock — the schedule fires in the same timezone.',
   'schedule.forwardPromptTemplate':
-    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN UKRAINIAN what you scheduled.\n\nRequest: {text}',
+    'The user wants to schedule the following. Use the schedule_create / schedule_list / schedule_cancel MCP tools (cron for repeats, one-shot for a single run), translating any time phrasing into the right schedule, then confirm to the user IN UKRAINIAN what you scheduled.\n\n{timeNote}\n\nRequest: {text}',
   'schedule.interviewPromptTemplate':
-    'The user invoked /schedule with no details. Ask them IN UKRAINIAN what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN UKRAINIAN what you scheduled.',
+    'The user invoked /schedule with no details. Ask them IN UKRAINIAN what prompt they want scheduled and WHEN (one-time or repeating). Once you have both, create it with the schedule_create MCP tool and confirm IN UKRAINIAN what you scheduled.\n\n{timeNote}',
 
   'apiRetry.transientNotice':
     '⏳ API перевантажено (rate limit) — повторю автоматично через {minutes} хв (спроба {attempt}).',

@@ -710,3 +710,60 @@ test('apiRetry.continueNudge is translated per locale (agent-facing nudge)', () 
   assert.equal(getKeyInLang('en' as Locale, 'apiRetry.continueNudge'), 'Continue from where you left off.');
   assert.equal(getKeyInLang('ru' as Locale, 'apiRetry.continueNudge'), 'Продолжай с того места, где ты остановился.');
 });
+
+test('the schedule templates carry the {timeNote} placeholder in every locale', () => {
+  // The note is what gives the agent an absolute clock. A locale that lost the
+  // placeholder would send its users back to the old failure mode: "tomorrow at
+  // 9" resolved against whatever the model assumed rather than the operator's
+  // zone. Also asserts the note itself substitutes cleanly.
+  for (const loc of localeCodes) {
+    for (const key of ['schedule.forwardPromptTemplate', 'schedule.interviewPromptTemplate']) {
+      const template = getKeyInLang(loc as Locale, key);
+      assert.ok(template, `${key} missing in ${loc}`);
+      assert.ok(template.includes('{timeNote}'), `${key} in ${loc} lost {timeNote}: "${template}"`);
+    }
+    const note = runWithLocale(loc as Locale, () =>
+      t('schedule.currentTimeNote', { now: '2026-09-14 18:42 (+03:00)', zone: 'Europe/Moscow' }),
+    );
+    assert.ok(note.includes('2026-09-14 18:42 (+03:00)'), `${loc} note lost the instant: "${note}"`);
+    assert.ok(note.includes('Europe/Moscow'), `${loc} note lost the zone: "${note}"`);
+    assert.ok(!note.includes('{'), `${loc} note has an unsubstituted placeholder: "${note}"`);
+  }
+});
+
+test('the timezone.* strings substitute their placeholders in every locale', () => {
+  // Every one of these is read by an operator making a decision ("is this the
+  // zone I meant?"), so a locale that dropped {zone} or {now} would render a
+  // confirmation that confirms nothing.
+  const substitutions: Record<string, Record<string, string | number>> = {
+    'timezone.status': { zone: 'Europe/Moscow', now: '18:42 (+03:00)' },
+    'timezone.set_success': { zone: 'Europe/Moscow', now: '18:42 (+03:00)', count: 3 },
+    'timezone.auto_success': { zone: 'UTC', now: '15:42 (+00:00)', count: 0 },
+    'timezone.invalid': { zone: 'Bogus/Zone' },
+    'timezone.picker_regions': { zone: 'Europe/Moscow', now: '2026-09-14 18:42 (+03:00)' },
+    'timezone.picker_zones': { region: 'Europe', page: 2, total: 6 },
+  };
+  for (const loc of localeCodes) {
+    for (const [key, vars] of Object.entries(substitutions)) {
+      const out = runWithLocale(loc as Locale, () => t(key, vars));
+      assert.ok(out.length > 0, `${key} empty in ${loc}`);
+      assert.ok(!/\{[a-zA-Z]+\}/.test(out), `${key} in ${loc} has an unsubstituted placeholder: "${out}"`);
+      for (const value of Object.values(vars)) {
+        assert.ok(
+          out.includes(String(value)),
+          `${key} in ${loc} dropped the value "${value}": "${out}"`,
+        );
+      }
+    }
+    // These two take no variables but must still say something.
+    for (const key of ['timezone.usage', 'timezone.fixed_offset_warning', 'timezone.picker_expired']) {
+      const out = getKeyInLang(loc as Locale, key);
+      assert.ok(out && out.length > 5, `${key} missing or suspiciously short in ${loc}`);
+    }
+    // The command name is typed, not translated.
+    assert.ok(
+      getKeyInLang(loc as Locale, 'timezone.usage')?.includes('/timezone'),
+      `timezone.usage in ${loc} must name /timezone literally`,
+    );
+  }
+});
