@@ -199,6 +199,16 @@ config/variants, not a per-message API field).
   self-report is an async transcript/HTTP read that must not enter the start path).
   Both `null` ⇒ the block collapses to `''` and the notice reads exactly as it did
   before it existed. `terminal.ready` has NO block — a shell has neither setting.
+  **Because the notice names the model, the backend must NOT announce it again:**
+  OpenCode's `startSession` resolves it SILENTLY (`fetchModelInfo(key, false)`,
+  like `resumeSession`) — resolution still runs (it populates
+  `modelOverride`/`currentModelLabel` for the notice, `/effort`, and the prompt
+  body), only the emit is dropped. With `emitOutput` left on, every `/new` /
+  `/opencode` start posted a SECOND bare `Model: <label>` message (live 2026-09-14).
+  The two REMAINING `Model:` emits are deliberate: a transient `/config` failure
+  leaves `isModelInfoShown` false so the first assistant message corrects the label
+  out loud (B9), and `setModel` resets that flag so the next turn confirms the new
+  model actually took effect server-side.
 - **Streaming output appends, never overwrites.** OpenCode streams a reply as
   incremental tails; every `output` emit after the first of a response carries
   `isContinuation: true` (`OutputEventMeta` in `types.ts`). The bot appends a

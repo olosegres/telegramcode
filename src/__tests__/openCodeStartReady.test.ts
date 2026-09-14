@@ -98,22 +98,60 @@ describe('OpenCode startSession ready reply (B18)', () => {
     const { adapter } = createStubbedAdapter(() => configReady);
     const orderKey: ThreadKey = { chatId: -100999222, threadId: 2 };
     adapter.on('started', () => events.push('started'));
-    adapter.on('output', (_key: ThreadKey, text: string) => {
-      if (text.startsWith('Model:')) events.push('model');
-    });
 
     const startPromise = adapter.startSession(orderKey, '/tmp/work');
 
     // `started` fires before the awaited fetchModelInfo, while /config is still
-    // pending — so the model line has NOT been emitted yet.
+    // pending — so no model is resolved yet.
     await waitFor(() => events.includes('started'));
     assert.deepEqual(events, ['started'], 'started must be emitted before the model is resolved');
+    assert.equal(
+      adapter.getCurrentModel(orderKey),
+      null,
+      'no model is known while /config is still pending',
+    );
 
-    // Now let /config resolve — the model line follows.
+    // Now let /config resolve — the label lands on the session (silently), so
+    // the bot's ready notice can name it.
     resolveConfig({ defaultModel: { providerID: 'anthropic', modelID: 'claude-opus-4-8' } });
     await startPromise;
 
-    assert.deepEqual(events, ['started', 'model'], 'model line arrives after readiness');
+    assert.equal(
+      adapter.getCurrentModel(orderKey),
+      'anthropic/claude-opus-4-8',
+      'model resolution still runs after readiness',
+    );
+  });
+
+  /**
+   * @description A fresh start must post exactly ONE message to the topic — the
+   * bot's `agent.ready` notice, which already carries `🧠 Model: <label>`.
+   *
+   * Bug (live trace 2026-09-14, `/new` in a bound topic): `startSession` called
+   * `fetchModelInfo(key)` with the default `emitOutput=true`, so the adapter
+   * ALSO emitted a bare `Model: anthropic/claude-opus-5` output line ~2 s after
+   * the ready notice — a second, redundant message on every start.
+   *
+   * Fix: the start path resolves the model SILENTLY (as `resumeSession` already
+   * did). This pins the absence of the emit while proving resolution still ran.
+   */
+  it('does NOT emit a standalone "Model:" line on a fresh start (ready notice already names it)', async () => {
+    const { adapter } = createStubbedAdapter(async () =>
+      ({ defaultModel: { providerID: 'anthropic', modelID: 'claude-opus-4-8' } }),
+    );
+    const silentKey: ThreadKey = { chatId: -100999222, threadId: 3 };
+
+    const outputs: string[] = [];
+    adapter.on('output', (_key: ThreadKey, text: string) => outputs.push(text));
+
+    await adapter.startSession(silentKey, '/tmp/work');
+
+    assert.deepEqual(outputs, [], 'a fresh start must emit no output of its own');
+    assert.equal(
+      adapter.getCurrentModel(silentKey),
+      'anthropic/claude-opus-4-8',
+      'the model is still resolved — only the announcement is dropped',
+    );
   });
 });
 

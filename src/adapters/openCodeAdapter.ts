@@ -1857,10 +1857,17 @@ export class OpenCodeAdapter extends EventEmitter implements AgentAdapter {
         // get here, so announce readiness now and resolve the model after.
         this.emit('started', key);
 
-        // Resolve + announce the model after readiness so a slow /config can
-        // never gate the ready reply. fetchModelInfo emits its own `Model:`
-        // line when resolved (B9/B17 semantics unchanged).
-        await this.fetchModelInfo(key);
+        // Resolve the model after readiness so a slow /config can never gate
+        // the ready reply. SILENT (emitOutput=false), like `resumeSession`: the
+        // bot's own `agent.ready` notice already names the resolved model (it
+        // reads `getCurrentModel` after `startSession` returns), so emitting a
+        // standalone `Model: <label>` line here posted a SECOND message for
+        // every `/new` / `/opencode` start. Resolution itself must still run —
+        // it populates `modelOverride`/`currentModelLabel` for that notice, for
+        // `/effort`, and for the prompt body. A transient `/config` failure
+        // leaves `isModelInfoShown` false, so the first assistant message still
+        // corrects the label out loud (B9 unchanged).
+        await this.fetchModelInfo(key, false);
 
         // Seed the bot's default reasoning effort (xhigh, clamped to the now
         // resolved model's variants) UNLESS the thread already has an explicit
