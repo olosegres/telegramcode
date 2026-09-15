@@ -96,6 +96,7 @@ When to use it:
 • The user asks to run/finish a plan or task LATER ("in 2h", "tomorrow 9am", "every weekday") → schedule_create. Put the work in \`prompt\`; the future run is a fresh session with no memory of this chat.
 • You produced a file/chart/screenshot/video to deliver → send_file_to_user. Videos MUST be H.264 .mp4 sent as video (never as_file/document, never .webm/.mov — those render as GIFs or don't play); transcode first if needed (the tool description has the ffmpeg recipe).
 • You want to deliver SEVERAL discrete messages (each as its own Telegram message, e.g. a per-item news digest) → send_messages_to_user. Each item can optionally attach ONE file/photo/video (text becomes its caption).
+• The user EXPLICITLY asks to compact/shrink/summarize this conversation's context → compact_conversation. Only on an explicit request, never on your own judgement.
 • You need to review or remove scheduled jobs → schedule_list / schedule_cancel.
 
 Each tool's own description has the exact argument recipe (one-shot vs cron vs N-times).`;
@@ -257,6 +258,13 @@ export interface SchedulerMcpDeps {
    * only routes the resolved thread + messages and relays the `{ ok }` summary.
    */
   sendMessagesToThread: SendMessagesToThread;
+  /**
+   * Arm an agent-triggered compaction for the resolved thread (F1). The bot
+   * compacts the session's context once the CURRENT turn finishes (it never
+   * compacts mid-turn). Returns a short status the tool relays to the agent —
+   * `ok:false` when there is no active agent session to compact.
+   */
+  compactConversation: (threadKey: string) => { ok: boolean; message: string };
   getSecret: () => Promise<string>;
   /** Listen port; defaults to {@link getSchedulerMcpPort}. Tests pass `0` for ephemeral. */
   port?: number;
@@ -854,6 +862,42 @@ function registerMessageSendTool(
   );
 }
 
+/**
+ * @description Register the agent→bot `compact_conversation` tool (F1). Like
+ * every tool here it resolves the target thread from `scope` first (scope
+ * isolation — the agent can only compact ITS OWN topic's session). The actual
+ * arm + deferred compaction lives in `deps.compactConversation`; this surface
+ * only routes the resolved thread and relays the status text.
+ */
+function registerCompactConversationTool(server: McpServer, deps: SchedulerMcpDeps, scope: SchedulerScope): void {
+  server.registerTool(
+    'compact_conversation',
+    {
+      title: 'Compact this conversation',
+      description:
+        'Compact (summarize) THIS topic\'s own session context so the conversation can continue in a ' +
+        'smaller window. Call this ONLY when the user EXPLICITLY asks to compact / shrink / summarize the ' +
+        'context (e.g. "compact our conversation", "сожми контекст") — never on your own judgement, and ' +
+        'never to "clean up". It does NOT compact mid-turn: it arms compaction and returns immediately; the ' +
+        'bot runs the real compaction the moment this turn finishes. There is nothing for you to do ' +
+        'afterwards — do not call it again for the same request.',
+      inputSchema: {
+        reason: z
+          .string()
+          .optional()
+          .describe('Optional short note on why the user asked to compact (for the bot log only).'),
+      },
+    },
+    async (args) => {
+      const resolved = resolveTargetThreadKey(scope, undefined, deps.getThreadsForDirectory);
+      if (!resolved.ok) return errorResult(resolved.error);
+      if (args.reason) console.log(`[compact_conversation] ${resolved.threadKey}: ${args.reason}`);
+      const outcome = deps.compactConversation(resolved.threadKey);
+      return outcome.ok ? textResult(outcome.message) : errorResult(outcome.message);
+    },
+  );
+}
+
 // ─── server factory ──────────────────────────────────────────────────
 
 type SchedulerMcpCancellationTombstone =
@@ -1018,6 +1062,7 @@ function buildRequestServer(
   registerSchedulerTools(server, deps, scope);
   registerFileSendTool(server, deps, scope, requestSignal);
   registerMessageSendTool(server, deps, scope, requestSignal);
+  registerCompactConversationTool(server, deps, scope);
   return server;
 }
 

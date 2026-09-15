@@ -82,6 +82,7 @@ export const ukDict: Record<string, string> = {
     '/verbosity — деталізація виводу (розмірковування/інструменти/суб-агенти)\n' +
     '/quit /status /output — контроль\n' +
     '/compact — стиснути контекст агента\n' +
+    '/compact_on_idle — авто-стиснення після простою (перемикач)\n' +
     '/clear — видалити повідомлення треда\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI-клавіші (Claude)\n' +
     '/bind — керування прив\'язкою',
@@ -310,6 +311,19 @@ export const ukDict: Record<string, string> = {
   'compact.unsupported_backend': 'Стиснення контексту не підтримується для {label}.',
   'compact.model_unresolved': '⚠️ Не можу стиснути: для цієї сесії не визначено модель. Вибери її через /model і спробуй знову.',
   'compact.failed': '⚠️ Не вдалося стиснути контекст сесії: {reason}',
+  'compact.busy': '⚠️ Агент зараз зайнятий — запусти /compact знову, коли поточний хід завершиться.',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN UKRAINIAN: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 Контекст автоматично стиснуто під час простою, щоб заощадити токени завдяки кешу.\nЗапусти /compact_on_idle, щоб вимкнути.',
+  'compactOnIdle.on': 'УВІМК',
+  'compactOnIdle.off': 'ВИМК',
+  'compactOnIdle.title': '🧹 Авто-стиснення під час простою для цієї теми: {state}\n\nКоли сесія простоює ~55 хв, її контекст стискається автоматично, щоб заощадити токени (кеш промпту ще теплий).\n\nЩоб перемкнути для ВСІХ тем одразу, запусти це в темі General.',
+  'compactOnIdle.titleGeneral': '🧹 Авто-стиснення під час простою — типове для ВСІХ тем: {state}\n\nКоли сесія простоює ~55 хв, її контекст стискається автоматично, щоб заощадити токени.\n\nКожна тема може перевизначити це власним /compact_on_idle.',
+  'compactOnIdle.enableButton': 'Увімкнути',
+  'compactOnIdle.disableButton': 'Вимкнути',
+  'compactOnIdle.setThisTopic': '✅ Авто-стиснення під час простою: {state} для цієї теми.',
+  'compactOnIdle.setGlobal': '✅ Авто-стиснення під час простою: {state} для ВСІХ тем (перевизначення по темах діють далі).',
+  'compactOnIdle.unsupported': 'Авто-стиснення під час простою застосовується до активної сесії агента. Спочатку запусти /claude або /opencode у прив’язаній темі.',
+  'compactOnIdle.pendingQuestionReask': '❓ У тебе лишилося запитання без відповіді. Натисни варіант, щоб відповісти та продовжити:',
 
   'connect.prompt_key': '🔑 Надішли API key для `{provider}` наступним повідомленням. Я видалю повідомлення з ключем з історії.',
   'connect.empty_key': '❌ API key порожній. Надішли ключ наступним повідомленням.',

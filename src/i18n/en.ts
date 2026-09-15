@@ -80,6 +80,7 @@ export const enDict: Record<string, string> = {
     '/verbosity — output verbosity (thinking/tools/sub-agents)\n' +
     '/quit /status /output — control\n' +
     '/compact — compact agent context\n' +
+    '/compact_on_idle — auto-compact after idle (toggle)\n' +
     '/clear — delete thread messages\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI keys (Claude)\n' +
     '/bind — manage binding',
@@ -308,6 +309,26 @@ export const enDict: Record<string, string> = {
   'compact.unsupported_backend': 'Context compaction is not supported for {label}.',
   'compact.model_unresolved': '⚠️ Cannot compact: no model is resolved for this session. Pick one with /model and try again.',
   'compact.failed': '⚠️ Failed to compact the session context: {reason}',
+  'compact.busy': '⚠️ The agent is busy right now — run /compact again once the current turn finishes.',
+  // Agent-facing (appended to the compaction prompt); English instructions, but
+  // the "IN <language>" directive is baked per locale like the schedule.* templates.
+  'compact.closingSectionInstruction':
+    'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN ENGLISH: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+
+  'compactOnIdle.notice':
+    '🧹 Auto compacted on idle to save tokens via cache.\nRun /compact_on_idle to disable it.',
+  'compactOnIdle.on': 'ON',
+  'compactOnIdle.off': 'OFF',
+  'compactOnIdle.title':
+    '🧹 Auto-compact on idle for this topic: {state}\n\nWhen the session sits idle for ~55 min its context is compacted automatically to save tokens (the prompt cache is still warm).\n\nTo switch it for ALL topics at once, run this in the General topic.',
+  'compactOnIdle.titleGeneral':
+    '🧹 Auto-compact on idle — default for ALL topics: {state}\n\nWhen a session sits idle for ~55 min its context is compacted automatically to save tokens.\n\nEach topic can still override this with its own /compact_on_idle.',
+  'compactOnIdle.enableButton': 'Enable',
+  'compactOnIdle.disableButton': 'Disable',
+  'compactOnIdle.setThisTopic': '✅ Auto-compact on idle: {state} for this topic.',
+  'compactOnIdle.setGlobal': '✅ Auto-compact on idle: {state} for ALL topics (per-topic overrides still apply).',
+  'compactOnIdle.unsupported': 'Auto-compact on idle applies to an active agent session. Start /claude or /opencode in a bound topic first.',
+  'compactOnIdle.pendingQuestionReask': '❓ You still have a pending question. Tap an option to answer it and continue:',
 
   'connect.prompt_key': '🔑 Send the API key for `{provider}` as the next message. I will delete the key message from history.',
   'connect.empty_key': '❌ API key is empty. Send the key as the next message.',

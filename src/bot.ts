@@ -32,7 +32,7 @@ import {
 } from './adapters/createAdapter';
 import { ClaudeJsonStreamAdapter, claudeJsonStreamAdapterName } from './adapters/claudeJsonStreamAdapter';
 import { checkShouldPostReattachRecap, formatReattachRecap } from './resumeContext';
-import type { ThreadKey, AgentAdapter, AgentRuntimeInfo, AgentSession, DisplayVerbosityMode, OutputEventMeta, OutputTransport, PendingQuestionState, AgentApiErrorClass, ResolvedThreadDisplayPrefs, SeenWatermark, SubagentStatusEvent, ThinkingEvent, ToolResultEvent } from './types';
+import type { ThreadKey, AgentAdapter, AgentRuntimeInfo, AgentSession, DisplayVerbosityMode, OpenCodeQuestion, OutputEventMeta, OutputTransport, PendingQuestionState, AgentApiErrorClass, ResolvedThreadDisplayPrefs, SeenWatermark, SubagentStatusEvent, ThinkingEvent, ToolResultEvent } from './types';
 import { createOutputTransport } from './output/createOutputTransport';
 import { keyToString, keyFromString } from './types';
 // Pure parser lives in `./agentTrigger` so it can be unit-tested without
@@ -277,6 +277,16 @@ import {
   getLoginCommandRoute,
 } from './utils/claudeAuthLogin';
 import { getCompactCommandRoute } from './utils/compactCommandRoute';
+import {
+  idleCompactMs,
+  checkShouldFireIdleCompaction,
+  checkIsBusyForRealTurn,
+  buildCompactionInstruction,
+  compactionSummaryGuidance,
+  extractCompactionClosingSection,
+  compactionClosingStartMarker,
+  compactionClosingEndMarker,
+} from './utils/compactOnIdle';
 import {
   type OpenCodeAuthMethod,
   buildOpenCodeAuthLoginArgs,
@@ -4302,6 +4312,13 @@ async function startAgentSession(key: ThreadKey, args?: string): Promise<string>
   // Open the startup window synchronously (before the first await) so text
   // typed right after `/claude` / `/opencode` is buffered, not dropped.
   startupPromptBuffer.markStarting(kStr);
+  // A fresh session is a new conversation — clear any spent compact-on-idle latch
+  // (D2) so this session can idle-compact even if the PREVIOUS session in this
+  // thread already fired one (its latch persisted). The user starting the agent
+  // is the genuine user action that re-arms it.
+  if (state.checkIsCompactIdleLatched(key)) {
+    void state.setCompactIdleLatched(key, false);
+  }
   markNeedsNewMessage(key);
   // Fresh session — the agent's context is empty, so the next prompt must
   // re-carry the thread-context preamble. Forget the last-injected marker.
@@ -4507,6 +4524,8 @@ async function forwardPromptToAgent(
   sentAtMs?: number,
   options: { isRecoveryReplay?: boolean } = {},
 ): Promise<void> {
+  // A forwarded prompt is thread activity — reset the compact-on-idle watchdog (F2).
+  noteThreadActivity(key);
   // Cache the RAW prompt so a wedged OpenCode session can be recovered by
   // restarting fresh and replaying it. Skip slash commands (not worth replaying)
   // and the recovery replay itself (keeps the once-per-episode guard intact). A
@@ -4700,6 +4719,8 @@ function command(
     if (hadPendingProviderConnect && !checkIsConnectCommandText(ctx.message.text)) {
       await replyToThread(key, t('connect.cancelled'));
     }
+    // Any command is thread activity — reset the compact-on-idle watchdog (F2).
+    noteThreadActivity(key);
     await handler(ctx, key);
   });
 }
@@ -6876,6 +6897,409 @@ const compactCommandText = '/compact';
 /** `adapter.name` of the raw-shell backend (see the `terminal` adapter). */
 const terminalAdapterName = 'terminal';
 
+/**
+ * `adapter.name` of the OpenCode backend. Used only to decide whether the D3
+ * maximally-complete-summary guidance must ride the per-invocation compaction
+ * instruction: OpenCode bakes that guidance into its fork compaction prompt (so
+ * it also covers auto/overflow compaction the bot can't reach), so the bot must
+ * NOT re-append it there; every other (Claude) backend has no bot-controlled
+ * prompt and needs it every time. See {@link getCompactionInstruction}.
+ */
+const openCodeAdapterName = 'opencode';
+
+/**
+ * @description Compose the per-invocation compaction instruction for a thread's
+ * backend (D3 summary guidance + the optional F2 closing section). The general
+ * guidance is skipped for OpenCode (baked in its fork prompt) and appended for
+ * the Claude backends; the closing-section directive rides only when requested.
+ * Returns `undefined` when nothing needs appending — a plain `/compact` stays
+ * byte-identical for OpenCode.
+ */
+function getCompactionInstruction(
+  adapter: AgentAdapter,
+  opts: { withClosingSection: boolean },
+): string | undefined {
+  return buildCompactionInstruction({
+    bakesSummaryGuidance: adapter.name === openCodeAdapterName,
+    summaryGuidance: compactionSummaryGuidance,
+    closingSectionInstruction: opts.withClosingSection
+      ? t('compact.closingSectionInstruction', {
+          startMarker: compactionClosingStartMarker,
+          endMarker: compactionClosingEndMarker,
+        })
+      : undefined,
+  });
+}
+
+// ─── compaction orchestration (F1 tool + F2 idle) ───────────────────────────
+//
+// The manual `/compact` command reaches a real backend compaction directly (the
+// handler below). The agent-triggered tool (F1) and the idle watchdog (F2) both
+// funnel through the shared `runThreadCompaction` seam so the three triggers use
+// ONE compaction path (plan 2026-09-14-self-compact-and-compact-on-idle).
+
+/** F1 poll cadence while waiting for the current turn to finish before draining. */
+const deferredCompactionPollMs = 3_000;
+
+interface ThreadCompactionResult {
+  ok: boolean;
+  error?: string;
+  /** The extracted "Where we stopped" closing prose (F2), or null when absent. */
+  closingSection?: string | null;
+}
+
+/**
+ * Threads with a compaction IN FLIGHT (via {@link runThreadCompaction}). While a
+ * key is here, the compaction's OWN output (some backends stream the summary
+ * turn) must NOT count as thread activity — otherwise it would re-arm the idle
+ * watchdog and mark a "completed turn", re-firing compaction on the next idle
+ * with no real user activity (a loop). See {@link handleAgentOutput}.
+ */
+const threadsCompacting = new Set<string>();
+
+/**
+ * @description Shared execution seam for the compaction triggers. Resolves the
+ * `/compact` route (same pure decision as the manual command), optionally
+ * appends the F2 closing-section instruction, runs the REAL compaction, and — for
+ * the closing-section case — lifts the appended section out of the generated
+ * summary. Returns the outcome; the CALLER owns any topic message so each trigger
+ * words it its own way (F1: silent; F2: the idle notice).
+ */
+async function runThreadCompaction(
+  key: ThreadKey,
+  opts: { withClosingSection: boolean },
+): Promise<ThreadCompactionResult> {
+  const adapter = getThreadAdapter(key);
+  if (!adapter.checkIsActive(key)) return { ok: false, error: t('compact.start_agent_first') };
+  const route = getCompactCommandRoute({
+    hasCompactContext: Boolean(adapter.compactContext),
+    adapterName: adapter.name,
+    terminalAdapterName,
+  });
+  if (route === 'notSupported') {
+    return { ok: false, error: t('compact.unsupported_backend', { label: adapter.label }) };
+  }
+
+  // D3: every bot-issued compaction carries the maximally-complete-summary
+  // guidance (baked in the OpenCode fork, appended for the Claude backends), plus
+  // the F2 closing-section directive when requested.
+  const instruction = getCompactionInstruction(adapter, { withClosingSection: opts.withClosingSection });
+
+  const kStr = keyToString(key);
+  threadsCompacting.add(kStr);
+  try {
+    if (route === 'forwardToAgent') {
+      // tmux Claude: its TUI parses `/compact [instruction]` natively. Best-effort —
+      // there is no completion signal to await, so no closing-section read here.
+      const text = instruction ? `${compactCommandText} ${instruction}` : compactCommandText;
+      await forwardPromptToAgent(key, adapter, text);
+      return { ok: true, closingSection: null };
+    }
+
+    // adapterCompact: OpenCode / json-stream — a real, awaited compaction.
+    const err = adapter.compactContext ? await adapter.compactContext(key, instruction) : null;
+    if (err) return { ok: false, error: err };
+    let closingSection: string | null = null;
+    if (opts.withClosingSection && adapter.getLatestCompactionSummary) {
+      const summary = await adapter.getLatestCompactionSummary(key).catch(() => null);
+      closingSection = summary ? extractCompactionClosingSection(summary) : null;
+    }
+    return { ok: true, closingSection };
+  } finally {
+    threadsCompacting.delete(kStr);
+  }
+}
+
+/** Per-thread bookkeeping for the idle watchdog (F2). */
+interface ThreadCompactionState {
+  idleTimer: NodeJS.Timeout | null;
+  /** ms of the last agent turn that produced output (something to compress). */
+  lastTurnEndAt: number;
+  /** ms of the last compaction run this process (0 = none yet). */
+  lastCompactionAt: number;
+}
+const threadCompactionStates = new Map<string, ThreadCompactionState>();
+
+function getThreadCompactionState(kStr: string): ThreadCompactionState {
+  let existing = threadCompactionStates.get(kStr);
+  if (!existing) {
+    existing = { idleTimer: null, lastTurnEndAt: 0, lastCompactionAt: 0 };
+    threadCompactionStates.set(kStr, existing);
+  }
+  return existing;
+}
+
+/** F1: threads whose agent asked (via the MCP tool) to compact when the turn ends. */
+const deferredCompactionArmed = new Set<string>();
+const deferredCompactionPollTimers = new Map<string, NodeJS.Timeout>();
+
+/**
+ * @description Re-arm the F2 idle timer for a thread on any activity (a user
+ * message / command, or agent output). The TIMER (55-min countdown) is reset by
+ * ANY activity; the feature's OWN notice is sent via `replyToThread`, which does
+ * NOT call this, so the notice cannot re-arm the watchdog into a loop. Only arms
+ * when the feature is enabled, an agent session is active, AND the user-latch is
+ * NOT spent (D2): once an idle-compaction has fired this user-active period the
+ * thread stays latched — agent output resets nothing, and only a genuine USER
+ * message (via {@link noteThreadUserActivity}) clears the latch and lets the
+ * timer re-arm. This is also what stops a bot restart from re-firing: a reattach
+ * calls this, but a latched thread never re-arms.
+ */
+function noteThreadActivity(key: ThreadKey): void {
+  const kStr = keyToString(key);
+  // A compaction in flight is NOT user/turn activity — skip so the compaction's
+  // own streamed summary (some backends) can't re-arm the watchdog into a loop.
+  if (threadsCompacting.has(kStr)) return;
+  const compactionState = getThreadCompactionState(kStr);
+  if (compactionState.idleTimer) {
+    clearTimeout(compactionState.idleTimer);
+    compactionState.idleTimer = null;
+  }
+  if (!state.checkIsCompactOnIdleEnabled(key)) return;
+  if (!getThreadAdapter(key).checkIsActive(key)) return;
+  // D2: a spent latch means idle-compaction already fired this user-active period
+  // — do NOT re-arm until a genuine USER message clears the latch.
+  if (state.checkIsCompactIdleLatched(key)) return;
+  const timer = setTimeout(() => {
+    compactionState.idleTimer = null;
+    void withThreadLocale(key, () => onIdleCompactionTimerFired(key));
+  }, idleCompactMs);
+  timer.unref?.();
+  compactionState.idleTimer = timer;
+}
+
+/**
+ * @description A genuine USER message (text / voice / file) or a fresh session
+ * start (D2): clear the spent idle-compaction latch so the next idle period can
+ * compact again, THEN reset/arm the idle timer. Distinct from
+ * {@link noteThreadActivity} — which agent output and bot-initiated forwards also
+ * call — because those must NEVER re-arm the latch, only a real user does.
+ */
+function noteThreadUserActivity(key: ThreadKey): void {
+  if (state.checkIsCompactIdleLatched(key)) {
+    void state.setCompactIdleLatched(key, false);
+  }
+  noteThreadActivity(key);
+}
+
+/** Mark that an agent turn produced output — there is now something to compress. */
+function markThreadTurnProducedOutput(key: ThreadKey): void {
+  const kStr = keyToString(key);
+  if (threadsCompacting.has(kStr)) return; // the compaction's own output isn't a turn
+  getThreadCompactionState(kStr).lastTurnEndAt = Date.now();
+}
+
+/** Clear all compaction timers/arms for a thread (session teardown / unbind). */
+function clearThreadCompaction(key: ThreadKey): void {
+  const kStr = keyToString(key);
+  const compactionState = threadCompactionStates.get(kStr);
+  if (compactionState?.idleTimer) clearTimeout(compactionState.idleTimer);
+  threadCompactionStates.delete(kStr);
+  deferredCompactionArmed.delete(kStr);
+  const pollTimer = deferredCompactionPollTimers.get(kStr);
+  if (pollTimer) clearTimeout(pollTimer);
+  deferredCompactionPollTimers.delete(kStr);
+  reAskedQuestionOptions.delete(kStr);
+}
+
+/** The F2 idle timer fired: re-check the guard, then compact once (D1/D2). */
+async function onIdleCompactionTimerFired(key: ThreadKey): Promise<void> {
+  const kStr = keyToString(key);
+  const compactionState = getThreadCompactionState(kStr);
+  const adapter = getThreadAdapter(key);
+  const isEnabled = state.checkIsCompactOnIdleEnabled(key);
+  const isSessionActive = adapter.checkIsActive(key);
+  // A pending interactive question makes the session report busy, but it is
+  // idle-WAITING, not running a turn — D1 treats that as a FIRE condition (reject
+  // + compact + re-ask), so exclude it from the "busy" the guard blocks on. A
+  // genuinely running turn still blocks.
+  const hasPendingQuestion = pendingQuestions.has(kStr);
+  const isBusy = adapter.checkIsBusy?.(key) ?? false;
+  const isBusyForRealTurn = checkIsBusyForRealTurn({ isBusy, hasPendingQuestion });
+  const isLatched = state.checkIsCompactIdleLatched(key);
+  const hasCompletedTurnSinceCompaction = compactionState.lastTurnEndAt > compactionState.lastCompactionAt;
+
+  if (!checkShouldFireIdleCompaction({ isEnabled, isSessionActive, isBusyForRealTurn, isLatched, hasCompletedTurnSinceCompaction })) {
+    // D2: no reschedule. A real running turn will emit output that resets the
+    // timer via `noteThreadActivity`; every other miss re-arms only on the next
+    // genuine USER message (which clears the latch).
+    return;
+  }
+
+  // D2: latch the thread the instant the fire is decided (BEFORE any output) and
+  // persist it, so a bot restart can't re-fire and no second compaction runs this
+  // user-active period. Stamp `lastCompactionAt` too so the re-fire guard holds
+  // even if the compaction itself runs long.
+  void state.setCompactIdleLatched(key, true);
+  compactionState.lastCompactionAt = Date.now();
+
+  // D1: a pending question at idle → reject it server-side to UNBLOCK the turn
+  // (reusing each backend's abort-error swallow via rejectQuestion + SIGINT),
+  // remember it, drop the bot-side pending state + its now-stale buttons, then
+  // RE-ASK it after the compaction with real buttons that feed a fresh prompt.
+  let savedQuestion: PendingQuestionState | null = null;
+  if (hasPendingQuestion) {
+    savedQuestion = pendingQuestions.get(kStr) ?? null;
+    const staleQuestionMessageId = savedQuestion?.messageId ?? null;
+    adapter.rejectQuestion?.(key);
+    adapter.sendSignal(key, 'SIGINT');
+    clearPendingQuestion(key);
+    if (staleQuestionMessageId !== null) {
+      await deleteThreadMessage(key, staleQuestionMessageId).catch(() => {});
+    }
+  }
+
+  const result = await runThreadCompaction(key, { withClosingSection: true });
+  if (!result.ok) {
+    console.warn(`[compact-on-idle] ${kStr} compaction failed: ${result.error ?? 'unknown'}`);
+    // The compaction failed but the question is already rejected — re-ask it so
+    // the user isn't left without the pending decision (no notice: nothing was
+    // compacted).
+    await postIdleCompactionResult(key, null, savedQuestion);
+    return;
+  }
+  const noticeParts = [t('compactOnIdle.notice')];
+  if (result.closingSection) noticeParts.push(result.closingSection);
+  await postIdleCompactionResult(key, noticeParts, savedQuestion);
+}
+
+/**
+ * @description Per-thread option labels of an idle-compaction RE-ASKED question
+ * (D1), keyed by {@link ThreadKey} string. A `reask_<idx>` tap forwards the
+ * matching label to the (now compacted) session as a FRESH prompt — the original
+ * question request was rejected server-side, so it cannot be answered any more.
+ * In-memory only: after a restart the buttons are simply inert ("no pending
+ * question"), which is safe.
+ */
+const reAskedQuestionOptions = new Map<string, string[]>();
+
+/**
+ * @description Build the RE-ASK inline keyboard for an idle-compaction pending
+ * question (D1) and record its option labels so a `reask_<idx>` tap can forward
+ * the chosen label as a fresh prompt. Label-only buttons (40-char cap, like the
+ * `qa_` buttons).
+ */
+function buildReAskKeyboard(key: ThreadKey, question: OpenCodeQuestion) {
+  reAskedQuestionOptions.set(keyToString(key), question.options.map((opt) => opt.label));
+  const buttons = question.options.map((opt, idx) => {
+    const label = opt.label.length > 40 ? opt.label.slice(0, 37) + '...' : opt.label;
+    return [Markup.button.callback(label, `reask_${idx}`)];
+  });
+  return Markup.inlineKeyboard(buttons);
+}
+
+/**
+ * @description Post the idle-compaction outcome message (D1/D2): the optional
+ * notice + closing section, and — when a question was pending at idle — the
+ * RE-ASKED question with real option buttons at the END. `noticeParts` is `null`
+ * on a compaction failure (re-ask only, no notice). No-op when there is nothing
+ * to say (failure with no pending question).
+ */
+async function postIdleCompactionResult(
+  key: ThreadKey,
+  noticeParts: string[] | null,
+  savedQuestion: PendingQuestionState | null,
+): Promise<void> {
+  const parts: string[] = noticeParts ? [...noticeParts] : [];
+  let keyboard: ReturnType<typeof buildReAskKeyboard> | undefined;
+  const question = savedQuestion?.data.questions[savedQuestion.currentIndex];
+  if (question) {
+    parts.push(t('compactOnIdle.pendingQuestionReask'));
+    parts.push(question.header ? `${question.header}\n${question.question}` : question.question);
+    keyboard = buildReAskKeyboard(key, question);
+  }
+  if (parts.length === 0) return;
+  await replyToThread(key, parts.join('\n\n'), keyboard);
+}
+
+/**
+ * @description F1: arm a "compact when the current turn finishes" request from
+ * the agent's `compact_conversation` MCP tool. Returns a short status the tool
+ * relays to the agent. Refuses when there is no active agent session (nothing to
+ * compact). The drain (below) runs the plain compaction once the session idles.
+ */
+function armDeferredCompaction(key: ThreadKey): { ok: boolean; message: string } {
+  const adapter = getThreadAdapter(key);
+  if (!adapter.checkIsActive(key)) {
+    return { ok: false, message: 'No active agent session in this topic — nothing to compact.' };
+  }
+  const route = getCompactCommandRoute({
+    hasCompactContext: Boolean(adapter.compactContext),
+    adapterName: adapter.name,
+    terminalAdapterName,
+  });
+  if (route === 'notSupported') {
+    return { ok: false, message: 'This session type cannot be compacted.' };
+  }
+  deferredCompactionArmed.add(keyToString(key));
+  scheduleDeferredCompactionPoll(key);
+  return { ok: true, message: 'Compaction is armed — it will run automatically when this turn finishes.' };
+}
+
+function scheduleDeferredCompactionPoll(key: ThreadKey): void {
+  const kStr = keyToString(key);
+  if (!deferredCompactionArmed.has(kStr)) return;
+  if (deferredCompactionPollTimers.has(kStr)) return; // already polling
+  const timer = setTimeout(() => {
+    deferredCompactionPollTimers.delete(kStr);
+    void withThreadLocale(key, () => tickDeferredCompaction(key));
+  }, deferredCompactionPollMs);
+  timer.unref?.();
+  deferredCompactionPollTimers.set(kStr, timer);
+}
+
+async function tickDeferredCompaction(key: ThreadKey): Promise<void> {
+  const kStr = keyToString(key);
+  if (!deferredCompactionArmed.has(kStr)) return;
+  const adapter = getThreadAdapter(key);
+  if (!adapter.checkIsActive(key)) {
+    deferredCompactionArmed.delete(kStr);
+    return;
+  }
+  if (adapter.checkIsBusy?.(key)) {
+    scheduleDeferredCompactionPoll(key); // still mid-turn — keep waiting
+    return;
+  }
+  deferredCompactionArmed.delete(kStr);
+  const result = await runThreadCompaction(key, { withClosingSection: false });
+  // Stamp the compaction so the F2 watchdog won't immediately re-fire.
+  getThreadCompactionState(kStr).lastCompactionAt = Date.now();
+  if (!result.ok) console.warn(`[compact-tool] ${kStr} deferred compaction failed: ${result.error ?? 'unknown'}`);
+}
+
+/**
+ * @description Shared core of the `/compact_on_idle` command + its inline
+ * callback. Regular topic → the per-thread override; General topic → the
+ * instance-wide default. Applies the toggle, confirms, and re-arms/disarms the
+ * idle watchdog for a regular topic.
+ */
+async function applyCompactOnIdle(key: ThreadKey, isGeneral: boolean, enabled: boolean): Promise<void> {
+  const stateWord = enabled ? t('compactOnIdle.on') : t('compactOnIdle.off');
+  if (isGeneral) {
+    await state.setCompactOnIdleGlobalDefault(enabled);
+    await replyToThread(key, t('compactOnIdle.setGlobal', { state: stateWord }));
+    return;
+  }
+  await state.setCompactOnIdleOverride(key, enabled);
+  await replyToThread(key, t('compactOnIdle.setThisTopic', { state: stateWord }));
+  if (enabled) noteThreadActivity(key);
+  else {
+    const compactionState = threadCompactionStates.get(keyToString(key));
+    if (compactionState?.idleTimer) {
+      clearTimeout(compactionState.idleTimer);
+      compactionState.idleTimer = null;
+    }
+  }
+}
+
+/** Build the `/compact_on_idle` picker keyboard (Enable / Disable, ✓ on current). */
+function buildCompactOnIdleKeyboard(isEnabled: boolean) {
+  return Markup.inlineKeyboard([
+    Markup.button.callback(t('compactOnIdle.enableButton') + (isEnabled ? ' ✓' : ''), 'coi_on'),
+    Markup.button.callback(t('compactOnIdle.disableButton') + (!isEnabled ? ' ✓' : ''), 'coi_off'),
+  ]);
+}
+
 // `/compact` — shrink the agent's context. BOT-OWNED, because "forward the text
 // and hope" only works for a backend that parses slash commands itself: OpenCode's
 // prompt transport does not, so the literal `/compact` used to reach the model as
@@ -6896,6 +7320,11 @@ command('compact', async (_ctx, key) => {
     return;
   }
 
+  // D3: a manual `/compact` also carries the maximally-complete-summary guidance
+  // (no closing section — the user is present) so the summary quality is uniform
+  // across every trigger. For OpenCode it resolves to `undefined` (baked in fork).
+  const instruction = getCompactionInstruction(adapter, { withClosingSection: false });
+
   // Both Claude backends: their CLI/TUI owns `/compact`, so keep the verbatim
   // forward through the normal choke point (slash commands skip the
   // thread-context preamble and the timestamp line).
@@ -6904,18 +7333,54 @@ command('compact', async (_ctx, key) => {
       await replyToThread(key, t('compact.start_agent_first'));
       return;
     }
-    await forwardPromptToAgent(key, adapter, compactCommandText);
+    await forwardPromptToAgent(key, adapter, instruction ? `${compactCommandText} ${instruction}` : compactCommandText);
     return;
   }
 
   // Real server-side compaction. `compactContext` is what selected this route;
   // the guard only narrows the optional method for TypeScript.
-  const err = adapter.compactContext ? await adapter.compactContext(key) : null;
+  const err = adapter.compactContext ? await adapter.compactContext(key, instruction) : null;
   if (err) {
     await replyToThread(key, err);
     return;
   }
   await replyToThread(key, t('compact.started'));
+});
+
+// `/compact_on_idle` — toggle auto-compaction after ~55 min idle. Regular topic
+// → per-thread override; General → the instance-wide default. Bare → an
+// Enable/Disable picker (✓ on current). Only meaningful for an agent topic with
+// an active session (terminal / unbound → the "nothing to compact" reply).
+command('compact_on_idle', async (ctx, key) => {
+  const arg = ctx.message.text.split(/\s+/).slice(1).join(' ').trim().toLowerCase();
+  const isGeneral = checkIsGeneral(key);
+
+  if (!isGeneral) {
+    const adapter = getThreadAdapter(key);
+    const route = getCompactCommandRoute({
+      hasCompactContext: Boolean(adapter.compactContext),
+      adapterName: adapter.name,
+      terminalAdapterName,
+    });
+    if (!adapter.checkIsActive(key) || route === 'notSupported') {
+      await replyToThread(key, t('compactOnIdle.unsupported'));
+      return;
+    }
+  }
+
+  if (arg === 'on' || arg === 'off') {
+    await applyCompactOnIdle(key, isGeneral, arg === 'on');
+    return;
+  }
+
+  const isEnabled = isGeneral
+    ? state.getCompactOnIdleGlobalDefault()
+    : state.checkIsCompactOnIdleEnabled(key);
+  const stateWord = isEnabled ? t('compactOnIdle.on') : t('compactOnIdle.off');
+  const title = isGeneral
+    ? t('compactOnIdle.titleGeneral', { state: stateWord })
+    : t('compactOnIdle.title', { state: stateWord });
+  await replyToThread(key, title, buildCompactOnIdleKeyboard(isEnabled));
 });
 
 /**
@@ -7507,7 +7972,7 @@ const botCommands = new Set([
   'start', 'claude', 'opencode', 'oc', 'terminal', 'agent', 'sessions', 'resume', 'cancel', 'model', 'connect',
   'disconnect', 'stop', 'stopall', 'stop-all', 'status', 'c', 'y', 'n', 'enter', 'up', 'down', 'tab', 'esc', 'escape', 'output', 'clear_messages',
   'bind', 'unbind', 'where', 'ls', 'list', 'new', 'clear_session', 'whoami', 'version', 'help', 'language', 'lang',
-  'doctor', 'mcp', 'rename_session', 'compact', 'trace', 'timestamps', 'timezone', 'schedule', 'thinking', 'tool_results',
+  'doctor', 'mcp', 'rename_session', 'compact', 'compact_on_idle', 'trace', 'timestamps', 'timezone', 'schedule', 'thinking', 'tool_results',
   'subagent', 'claude_mode', 'effort', 'verbosity', 'quit', 'q', 'quit-all', 'quitall', 'pair',
 ]);
 
@@ -8145,6 +8610,8 @@ const albumCollector = createMediaGroupCollector<AlbumCollectorItem>({
       // User took over (album upload) before a pending API-error retry fired →
       // cancel it silently, like the text/voice handlers.
       cancelApiRetry(key);
+      // A user album is genuine user activity → clear the compact-on-idle latch (D2).
+      noteThreadUserActivity(key);
       try {
         await deliverPromptOrBuffer(key, promptText, isStarting);
       } catch (err) {
@@ -8239,6 +8706,8 @@ async function handleIncomingFile(
   // User took over (file upload) before a pending API-error retry fired →
   // cancel it silently, like the text/voice handlers.
   cancelApiRetry(key);
+  // A user file is genuine user activity → clear the compact-on-idle latch (D2).
+  noteThreadUserActivity(key);
   await deliverPromptOrBuffer(key, promptText, isStarting);
 }
 
@@ -8907,6 +9376,48 @@ bot.action(/^effort_(.+)$/, async (ctx) => {
   }
 });
 
+async function handleCompactOnIdleCallback(ctx: Context, enabled: boolean): Promise<void> {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  const isGeneral = checkIsGeneral(key);
+  await withThreadLocale(key, () => applyCompactOnIdle(key, isGeneral, enabled));
+  await ctx.answerCbQuery();
+  // Re-render the picker keyboard so the ✓ follows the new state.
+  const cbMsg = ctx.callbackQuery?.message as Message | undefined;
+  if (cbMsg) {
+    const keyboard = buildCompactOnIdleKeyboard(enabled);
+    try {
+      await enqueueSend(
+        key,
+        () => bot.telegram.editMessageReplyMarkup(key.chatId, cbMsg.message_id, undefined, keyboard.reply_markup),
+      );
+    } catch (e) {
+      const desc = checkIsApiError(e) ? getErrorDescription(e) : '';
+      if (!/message is not modified/i.test(desc)) console.warn('[coi_cb] keyboard re-render failed:', desc || e);
+    }
+  }
+}
+
+bot.action('coi_on', (ctx) => handleCompactOnIdleCallback(ctx, true));
+bot.action('coi_off', (ctx) => handleCompactOnIdleCallback(ctx, false));
+
+// D1: a tap on an idle-compaction RE-ASKED question button. The original request
+// was rejected server-side during the compaction, so the chosen option label is
+// delivered to the (now compacted) session as a FRESH prompt, not answered.
+bot.action(/^reask_(\d+)$/, async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  const optIdx = parseInt(ctx.match[1], 10);
+  const labels = reAskedQuestionOptions.get(keyToString(key));
+  const label = labels?.[optIdx];
+  if (!label) { await ctx.answerCbQuery(t('cb.no_pending_question')); return; }
+  const adapter = getThreadAdapter(key);
+  if (!adapter.checkIsActive(key)) { await ctx.answerCbQuery(t('agent.no_session')); return; }
+  reAskedQuestionOptions.delete(keyToString(key));
+  await ctx.answerCbQuery(label);
+  await withThreadLocale(key, () => deliverActivePrompt(key, adapter, label));
+});
+
 bot.action(/^ccmode_(.+)$/, async (ctx) => {
   const key = await authoriseContext(ctx);
   if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
@@ -9159,6 +9670,10 @@ async function deliverActivePrompt(
   text: string,
   sentAtMs?: number,
 ): Promise<void> {
+  // A genuine USER message (text or voice) — clear the compact-on-idle latch so
+  // the next idle period can compact again (D2), whether it answers a pending
+  // question or is a fresh prompt.
+  noteThreadUserActivity(key);
   const pending = pendingQuestions.get(keyToString(key));
   if (pending && adapter.answerQuestion) {
     const currentQuestion = pending.data.questions[pending.currentIndex];
@@ -9334,6 +9849,12 @@ function handleAgentOutput(key: ThreadKey, output: string, meta?: OutputEventMet
   console.log(`[Bot] output ${keyToString(key)} (${output.length}): ${output.slice(0, 100)}...`);
   if (!output.trim()) return;
   traceAgentEmit('output', key, output);
+
+  // Agent output = a turn is producing content (something to compress) AND the
+  // topic is active — reset the compact-on-idle watchdog (F2). Both hooks self-
+  // skip while THIS thread's own compaction streams (loop guard).
+  markThreadTurnProducedOutput(key);
+  noteThreadActivity(key);
 
   // Sub-agent chunk (`/subagent full`, S4): render it visibly marked and
   // OUTSIDE the parent reply's edit-in-place continuation chain — it must
@@ -10482,6 +11003,8 @@ function handleAgentClosed(key: ThreadKey): void {
   // A closed session has nothing to resume — drop any armed retry silently.
   cancelApiRetry(key);
   clearAuthNotice(key); // session closed → retire any pinned logged-out notice
+  // A closed session has nothing to compact — drop the idle watchdog + any arm.
+  clearThreadCompaction(key);
   const adapter = getThreadAdapter(key);
   replyToThread(key, t('agent.session_ended', { label: adapter.label })).catch(() => {});
   // Banner now reads `idle`; closed sessions may also persist with the
@@ -10507,6 +11030,9 @@ function handleAgentError(key: ThreadKey, error: Error): void {
  */
 function handleAgentStarted(key: ThreadKey): void {
   updatePinnedStatus(key).catch(() => {});
+  // A fresh/adopted session arms the compact-on-idle watchdog (F2); it won't fire
+  // until a turn produces output AND the topic then sits idle (no catch-up burst).
+  noteThreadActivity(key);
 }
 
 /**
@@ -10542,6 +11068,9 @@ function handleAgentStopped(key: ThreadKey): void {
   // A stopped session has nothing to resume — drop any armed retry silently.
   cancelApiRetry(key);
   clearAuthNotice(key); // session stopped → retire any pinned logged-out notice
+  // A stopped session has nothing to compact — drop the idle watchdog + any
+  // armed agent-triggered compaction.
+  clearThreadCompaction(key);
   updatePinnedStatus(key).catch(() => {});
 }
 
@@ -10576,6 +11105,7 @@ export const COMMANDS_MENU = [
   { command: 'quit', description: '🚪 Quit agent (alias /q)' },
   { command: 'quitall', description: '🚪 Quit ALL agents (General-only)' },
   { command: 'compact', description: '🧹 Compact agent context' },
+  { command: 'compact_on_idle', description: '🧹 Auto-compact after idle (toggle)' },
   { command: 'schedule', description: '⏰ Schedule a prompt (agent does the work)' },
   { command: 'status', description: '📊 Show status' },
   { command: 'output', description: '📜 Last 500 lines' },
@@ -11319,6 +11849,7 @@ function wireScheduler(): SchedulerMcpHandle {
     },
     sendFilesToThread,
     sendMessagesToThread,
+    compactConversation: (threadKeyStr) => armDeferredCompaction(keyFromString(threadKeyStr)),
     getSecret: () => state.getSchedulerMcpSecret(),
     // Reuse the port persisted from a prior boot (env override wins) so the
     // `telegramBot` registrations injected into agent sessions keep pointing at

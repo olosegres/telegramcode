@@ -196,6 +196,42 @@ test('compact keys exist in every locale', () => {
   }
 });
 
+test('compact-on-idle keys exist in every locale', () => {
+  for (const code of [
+    'compact.busy',
+    'compact.closingSectionInstruction',
+    'compactOnIdle.notice',
+    'compactOnIdle.on',
+    'compactOnIdle.off',
+    'compactOnIdle.title',
+    'compactOnIdle.titleGeneral',
+    'compactOnIdle.enableButton',
+    'compactOnIdle.disableButton',
+    'compactOnIdle.setThisTopic',
+    'compactOnIdle.setGlobal',
+    'compactOnIdle.unsupported',
+  ]) {
+    assert.ok(checkKeyInAllLangs(code), `${code} missing in some locale`);
+  }
+});
+
+test('compact.closingSectionInstruction substitutes the marker placeholders', () => {
+  const out = t('compact.closingSectionInstruction', {
+    startMarker: '<<<WHERE_WE_STOPPED>>>',
+    endMarker: '<<<END_WHERE_WE_STOPPED>>>',
+  });
+  assert.ok(out.includes('<<<WHERE_WE_STOPPED>>>'), `expected the start marker in "${out}"`);
+  assert.ok(out.includes('<<<END_WHERE_WE_STOPPED>>>'), `expected the end marker in "${out}"`);
+  assert.ok(!out.includes('{startMarker}'), 'startMarker placeholder not substituted');
+  assert.ok(!out.includes('{endMarker}'), 'endMarker placeholder not substituted');
+});
+
+test('compactOnIdle.setThisTopic substitutes the {state}', () => {
+  const out = t('compactOnIdle.setThisTopic', { state: 'ON' });
+  assert.ok(out.includes('ON'), `expected the state in "${out}"`);
+  assert.ok(!out.includes('{state}'), `placeholder not substituted: "${out}"`);
+});
+
 test('compact.failed substitutes the {reason}', () => {
   const out = t('compact.failed', { reason: 'HTTP 500 boom' });
   assert.ok(out.includes('HTTP 500 boom'), `expected the reason in "${out}"`);

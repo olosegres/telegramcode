@@ -89,6 +89,23 @@ const streamOutputBatchMs = 350;
  *  proceeding without the interactive control channel (questions unavailable). */
 const initializeHandshakeTimeoutMs = 15000;
 
+/** Outcome of an in-flight bot-issued `/compact` turn. */
+type CompactionResult =
+  | { ok: true; preTokens: number | null; postTokens: number | null }
+  | { ok: false; error: string };
+
+/** Awaiter bookkeeping for a bot-issued compaction (see {@link StreamSession.pendingCompaction}). */
+interface PendingStreamCompaction {
+  resolve: (result: CompactionResult) => void;
+  timer: NodeJS.Timeout | null;
+  /** Set when a `compact_status` reported `success` (wait for the boundary's tokens). */
+  sawSuccess: boolean;
+}
+
+/** How long to wait for a `/compact` turn to report its outcome before giving up
+ *  (a compaction summarisation turn is slow — ~50s observed — so this is generous). */
+const compactionTimeoutMs = 3 * 60 * 1000;
+
 /** The pending answer to a live AskUserQuestion control_request. */
 interface PendingStreamQuestion {
   /** The control_request `request_id` the control_response must echo. */
@@ -177,6 +194,13 @@ interface StreamSession {
   // — control channel —
   pendingInitResolve: (() => void) | null;
   initRequestId: string | null;
+  // — compaction (F3: `/compact` over a stream-json turn) —
+  /** True from a bot-issued `/compact` turn until its terminal signal — suppresses
+   *  the compaction turn's own output so only the bot's confirmation shows. */
+  compactionInProgress: boolean;
+  /** Awaiter for the in-flight bot-issued compaction, resolved by the CLI's
+   *  `compact_boundary` / failing `compact_status` / turn end / timeout. */
+  pendingCompaction: PendingStreamCompaction | null;
   // — question —
   pendingQuestion: PendingStreamQuestion | null;
   // — api error one-shot guard (re-armed on recovery) —
@@ -396,6 +420,7 @@ export class ClaudeJsonStreamAdapter extends EventEmitter implements AgentAdapte
       toolNamesById: new Map(), questionToolUseIds: new Set(),
       subagentActive: false, childResponseText: '', childEmittedLength: 0, childOutputTimer: null,
       pendingInitResolve: null, initRequestId: null,
+      compactionInProgress: false, pendingCompaction: null,
       pendingQuestion: null, apiErrorFired: false, swallowNextAbortError: false,
       lastWatermarkOffset: -1,
     };
@@ -682,6 +707,7 @@ export class ClaudeJsonStreamAdapter extends EventEmitter implements AgentAdapte
       toolNamesById: new Map(), questionToolUseIds: new Set(),
       subagentActive: false, childResponseText: '', childEmittedLength: 0, childOutputTimer: null,
       pendingInitResolve: null, initRequestId: null,
+      compactionInProgress: false, pendingCompaction: null,
       pendingQuestion: this.readQuestionSidecar(paths),
       apiErrorFired: false, swallowNextAbortError: false,
       lastWatermarkOffset: -1,
@@ -794,6 +820,58 @@ export class ClaudeJsonStreamAdapter extends EventEmitter implements AgentAdapte
     return this.sessions.get(keyToString(key))?.sessionId ?? null;
   }
 
+  /**
+   * @description Real, CONFIRMED compaction on the json-stream backend (F3):
+   * send `/compact` (or `/compact <instruction>` for F2's closing section) as a
+   * stream-json user turn — the CLI parses the slash command, compacts, and
+   * reports the outcome on a `compact_boundary` (success, with token counts) /
+   * a failing `compact_status` frame. The whole turn's own output is suppressed
+   * (`compactionInProgress`) so only the bot's confirmation shows. Resolves
+   * `null` on success or a short error string, awaiting the terminal signal so
+   * the caller can post its notice AFTER the context was really compacted.
+   */
+  async compactContext(key: ThreadKey, instruction?: string): Promise<string | null> {
+    const session = this.sessions.get(keyToString(key));
+    if (!session?.isActive) return t('compact.start_agent_first');
+    if (session.pendingCompaction) return t('compact.failed', { reason: 'a compaction is already running' });
+    if (session.isBusy) return t('compact.busy');
+
+    const trimmed = instruction?.trim();
+    const text = trimmed ? `/compact ${trimmed}` : '/compact';
+    const result = await new Promise<CompactionResult>((resolve) => {
+      const timer = setTimeout(() => {
+        this.resolveCompaction(session, { ok: false, error: 'timed out waiting for compaction' });
+      }, compactionTimeoutMs);
+      timer.unref?.();
+      session.pendingCompaction = { resolve, timer, sawSuccess: false };
+      session.compactionInProgress = true;
+      // Fresh turn: reset the answer cursor + idle-watchdog clock, mark busy.
+      session.currentResponseText = '';
+      session.emittedLength = 0;
+      session.isBusy = true;
+      session.lastStdoutActivityAt = Date.now();
+      this.writeStdin(session, { type: 'user', message: { role: 'user', content: text } });
+    });
+    if (result.ok) {
+      console.log(`[ClaudeJson] compacted ${keyToString(key)} (pre=${result.preTokens ?? '?'} post=${result.postTokens ?? '?'})`);
+      return null;
+    }
+    console.warn(`[ClaudeJson] compaction failed for ${keyToString(key)}: ${result.error}`);
+    return t('compact.failed', { reason: result.error });
+  }
+
+  /**
+   * @description Read the newest compaction summary from the on-disk transcript
+   * (the `isCompactSummary:true` message) so F2 can lift its appended closing
+   * section into the idle-compaction notice. Returns `null` when the session is
+   * inactive, the transcript is unreadable, or no summary is present.
+   */
+  async getLatestCompactionSummary(key: ThreadKey): Promise<string | null> {
+    const session = this.sessions.get(keyToString(key));
+    if (!session?.isActive) return null;
+    return readLatestCompactSummaryFromTranscript(getClaudeTranscriptPath(session.workDir, session.sessionId));
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   //  Input (S3)
   // ─────────────────────────────────────────────────────────────────────────
@@ -898,6 +976,22 @@ export class ClaudeJsonStreamAdapter extends EventEmitter implements AgentAdapte
   }
 
   private applyAction(session: StreamSession, action: ClaudeStreamAction): void {
+    // A bot-issued `/compact` turn produces its own noise ("Not enough messages
+    // to compact.", the summarisation itself) — suppress ALL of it so only the
+    // bot's confirmation shows. The compact_* frames + turn end still drive the
+    // awaiter; a stray provider error still surfaces. (A CLI-side AUTO compaction
+    // during a normal turn is NOT gated here — `compactionInProgress` is only set
+    // by our own `compactContext`, and `pendingCompaction` guards the handlers.)
+    if (session.compactionInProgress) {
+      switch (action.kind) {
+        case 'turnEnd': this.handleTurnEnd(session, action); return;
+        case 'compactStatus': this.handleCompactStatus(session, action); return;
+        case 'compactBoundary': this.handleCompactBoundary(session, action); return;
+        case 'init': if (action.model) session.reportedModel = action.model; return;
+        case 'apiRetry': this.maybeEmitApiError(session, action.text); return;
+        default: return; // swallow text / thinking / tool / toolResult / control / echo
+      }
+    }
     switch (action.kind) {
       case 'init':
         // Per-turn `init` re-emits; the id is fixed by our `--session-id`, so the
@@ -936,12 +1030,52 @@ export class ClaudeJsonStreamAdapter extends EventEmitter implements AgentAdapte
       case 'apiRetry':
         this.maybeEmitApiError(session, action.text);
         return;
+      case 'compactStatus':
+        // A CLI-side auto-compaction (no bot-issued `/compact`) — no awaiter to
+        // resolve, so this is a no-op; the guard lives in the handler.
+        this.handleCompactStatus(session, action);
+        return;
+      case 'compactBoundary':
+        this.handleCompactBoundary(session, action);
+        return;
       case 'rateLimit':
         // Subscription usage-window signal; not surfaced to the topic (parity).
         return;
       case 'userEcho':
         return;
     }
+  }
+
+  // — compaction (F3) —
+
+  private handleCompactStatus(session: StreamSession, action: Extract<ClaudeStreamAction, { kind: 'compactStatus' }>): void {
+    const pending = session.pendingCompaction;
+    if (!pending) return;
+    if (action.result === 'success') {
+      // Wait for the boundary frame (it carries the pre/post token counts).
+      pending.sawSuccess = true;
+      return;
+    }
+    // Any non-success result (e.g. "not enough messages") is a failure.
+    this.resolveCompaction(session, {
+      ok: false,
+      error: action.error ?? action.result ?? 'compaction did not run',
+    });
+  }
+
+  private handleCompactBoundary(session: StreamSession, action: Extract<ClaudeStreamAction, { kind: 'compactBoundary' }>): void {
+    if (!session.pendingCompaction) return;
+    this.resolveCompaction(session, { ok: true, preTokens: action.preTokens, postTokens: action.postTokens });
+  }
+
+  /** Resolve (and clear) the in-flight compaction awaiter exactly once. */
+  private resolveCompaction(session: StreamSession, result: CompactionResult): void {
+    const pending = session.pendingCompaction;
+    if (!pending) return;
+    session.pendingCompaction = null;
+    session.compactionInProgress = false;
+    if (pending.timer) clearTimeout(pending.timer);
+    pending.resolve(result);
   }
 
   // — answer text —
@@ -1064,6 +1198,26 @@ export class ClaudeJsonStreamAdapter extends EventEmitter implements AgentAdapte
     session.outstandingToolUseIds.clear();
     this.finishReasoning(session);
     this.clearSubagent(session);
+
+    // A bot-issued `/compact` turn ends here. Emit NOTHING (the summary text /
+    // "not enough" message are suppressed) and settle the awaiter: a still-pending
+    // compaction with no failure signal is a clean success (fallback for a build
+    // that skipped the boundary frame); an errored turn is a failure.
+    if (session.compactionInProgress) {
+      session.swallowNextAbortError = false;
+      if (session.pendingCompaction) {
+        const sawSuccess = session.pendingCompaction.sawSuccess;
+        this.resolveCompaction(
+          session,
+          sawSuccess || !action.isError
+            ? { ok: true, preTokens: null, postTokens: null }
+            : { ok: false, error: action.errorText ?? 'compaction failed' },
+        );
+      } else {
+        session.compactionInProgress = false;
+      }
+      return;
+    }
     // One-shot: consume the interrupt's swallow flag for THIS terminal result
     // (read-and-clear so it can never leak onto a later, unrelated turn).
     const swallowAbortError = session.swallowNextAbortError;
@@ -1364,6 +1518,45 @@ export class ClaudeJsonStreamAdapter extends EventEmitter implements AgentAdapte
 function checkIsEmitCaughtUp(session: StreamSession): boolean {
   return session.currentResponseText.length === session.emittedLength
     && session.childResponseText.length === session.childEmittedLength;
+}
+
+/**
+ * @description Extract the newest compaction summary from a Claude on-disk
+ * transcript: the last JSONL line with `isCompactSummary === true`, whose
+ * `message.content` (a string, or `{type:'text'}` blocks) holds the summary the
+ * `/compact` turn produced. Returns `null` for an unreadable file or when no
+ * summary line is present. Reads the whole file — cheap enough for the
+ * once-per-idle-compaction call.
+ */
+export function readLatestCompactSummaryFromTranscript(filePath: string): string | null {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return null;
+  }
+  let summary: string | null = null;
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let obj: unknown;
+    try { obj = JSON.parse(trimmed); } catch { continue; }
+    if (!checkIsStreamRecord(obj) || obj.isCompactSummary !== true) continue;
+    const message = checkIsStreamRecord(obj.message) ? obj.message : null;
+    const content = message?.content;
+    if (typeof content === 'string' && content.trim()) {
+      summary = content;
+    } else if (Array.isArray(content)) {
+      const chunks: string[] = [];
+      for (const block of content) {
+        if (checkIsStreamRecord(block) && block.type === 'text' && typeof block.text === 'string') {
+          chunks.push(block.text);
+        }
+      }
+      if (chunks.join('').trim()) summary = chunks.join('');
+    }
+  }
+  return summary;
 }
 
 /** Spawn-fail diagnostics: the wrapper's exit code + a stderr excerpt (the

@@ -80,6 +80,7 @@ export const ruDict: Record<string, string> = {
     '/verbosity — детализация вывода (размышления/инструменты/суб-агенты)\n' +
     '/quit /status /output — контроль\n' +
     '/compact — сжать контекст агента\n' +
+    '/compact_on_idle — авто-сжатие после простоя (переключатель)\n' +
     '/clear — удалить сообщения треда\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI-команды (Claude)\n' +
     '/bind — управление binding',
@@ -308,6 +309,19 @@ export const ruDict: Record<string, string> = {
   'compact.unsupported_backend': 'Сжатие контекста не поддерживается для {label}.',
   'compact.model_unresolved': '⚠️ Нельзя сжать: для этой сессии не определена модель. Выбери её через /model и попробуй снова.',
   'compact.failed': '⚠️ Не удалось сжать контекст сессии: {reason}',
+  'compact.busy': '⚠️ Агент сейчас занят — запусти /compact снова, когда текущий ход завершится.',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN RUSSIAN: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 Контекст автоматически сжат при простое, чтобы сэкономить токены за счёт кэша.\nЗапусти /compact_on_idle, чтобы отключить.',
+  'compactOnIdle.on': 'ВКЛ',
+  'compactOnIdle.off': 'ВЫКЛ',
+  'compactOnIdle.title': '🧹 Авто-сжатие при простое для этого топика: {state}\n\nКогда сессия простаивает ~55 мин, её контекст сжимается автоматически, чтобы сэкономить токены (кэш промпта ещё тёплый).\n\nЧтобы переключить для ВСЕХ топиков сразу, запусти это в топике General.',
+  'compactOnIdle.titleGeneral': '🧹 Авто-сжатие при простое — по умолчанию для ВСЕХ топиков: {state}\n\nКогда сессия простаивает ~55 мин, её контекст сжимается автоматически, чтобы сэкономить токены.\n\nКаждый топик может переопределить это своим /compact_on_idle.',
+  'compactOnIdle.enableButton': 'Включить',
+  'compactOnIdle.disableButton': 'Выключить',
+  'compactOnIdle.setThisTopic': '✅ Авто-сжатие при простое: {state} для этого топика.',
+  'compactOnIdle.setGlobal': '✅ Авто-сжатие при простое: {state} для ВСЕХ топиков (переопределения по топикам продолжают действовать).',
+  'compactOnIdle.unsupported': 'Авто-сжатие при простое работает для активной сессии агента. Сначала запусти /claude или /opencode в привязанном топике.',
+  'compactOnIdle.pendingQuestionReask': '❓ У тебя остался неотвеченный вопрос. Нажми на вариант, чтобы ответить и продолжить:',
 
   'connect.prompt_key': '🔑 Пришли API key для `{provider}` следующим сообщением. Я удалю сообщение с ключом из истории.',
   'connect.empty_key': '❌ API key пустой. Пришли ключ следующим сообщением.',

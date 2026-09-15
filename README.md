@@ -294,7 +294,8 @@ actually start an agent or terminal in the folder.
 | `/schedule` | Schedule a prompt in free text — the agent parses the time and owns the job; see [Scheduler](#scheduler-schedule) |
 | `/clear_messages` | Delete bot messages in this topic (up to 48h, Telegram limit) |
 | `/clear` | Forwarded to the agent (Claude wipes context; OpenCode plain text) — not a bot command anymore. Also purges the topic's file-intake dir |
-| `/compact` | Compact the agent's context. OpenCode: real server-side compaction; Claude: the literal command is forwarded (its TUI compacts); terminal: not supported |
+| `/compact` | Compact the agent's context — a real, confirmed compaction on OpenCode and on the default (stream) Claude backend; the tmux Claude backend has the literal command forwarded (its TUI compacts); terminal: not supported |
+| `/compact_on_idle` | Toggle auto-compaction after ~55 min idle (Enable/Disable picker). Per topic; run it in **General** to set the default for all topics. On by default. The bot posts a short notice + a "where we stopped" recap after each idle compaction. Fires at most once per active period (until you write again); if a question was pending it is re-asked with tappable buttons after the compaction |
 | `/bind` | Bare: current binding + folder picker, with «leave current dir» (the old `/unbind`) and «create new folder» buttons |
 | `/mcp` | List MCP servers active for this thread |
 
@@ -537,6 +538,10 @@ agent even when two clients use the same JSON-RPC request id. It exposes:
 
 - `schedule_create` / `schedule_list` / `schedule_cancel` — the agent-side
   scheduling API behind `/schedule`;
+- `compact_conversation` — lets the agent compact its OWN session when you ask it
+  to in plain words ("compact our conversation"). It arms the compaction and
+  returns immediately; the bot runs the real compaction the moment the current
+  turn finishes (never mid-turn);
 - `send_file_to_user` — lets the agent push files from the bound folder into the
   topic. A single MP4 uses Bot API `sendVideo`; eligible all-video and mixed
   photo/video albums use `sendMediaGroup`, with each MP4 represented by an

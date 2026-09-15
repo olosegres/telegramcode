@@ -76,6 +76,7 @@ export const uzDict: Record<string, string> = {
     '/verbosity — chiqish batafsilligi (thinking/tools/sub-agentlar)\n' +
     '/quit /status /output — boshqaruv\n' +
     '/compact — agent kontekstini siqish\n' +
+    '/compact_on_idle — bo‘sh turgandan keyin avtosiqish (almashtirgich)\n' +
     '/clear — mavzu xabarlarini o‘chirish\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI tugmalar (Claude)\n' +
     '/bind — bog‘lanishni boshqarish',
@@ -304,6 +305,19 @@ export const uzDict: Record<string, string> = {
   'compact.unsupported_backend': '{label} uchun kontekstni siqish qo‘llab-quvvatlanmaydi.',
   'compact.model_unresolved': '⚠️ Siqib bo‘lmaydi: bu seans uchun model aniqlanmadi. /model bilan tanlang va qayta urinib ko‘ring.',
   'compact.failed': '⚠️ Seans kontekstini siqib bo‘lmadi: {reason}',
+  'compact.busy': '⚠️ Agent hozir band — joriy navbat tugagach /compact ni qayta ishga tushiring.',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN UZBEK: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 Bo‘sh turganda kesh orqali tokenlarni tejash uchun avtomatik siqildi.\nO‘chirish uchun /compact_on_idle ni ishga tushiring.',
+  'compactOnIdle.on': 'YONIQ',
+  'compactOnIdle.off': 'O‘CHIQ',
+  'compactOnIdle.title': '🧹 Bu mavzu uchun bo‘sh turganda avtosiqish: {state}\n\nSeans ~55 daqiqa bo‘sh tursa, tokenlarni tejash uchun uning konteksti avtomatik siqiladi (prompt keshi hali iliq).\n\nBarcha mavzular uchun bir vaqtda o‘zgartirish uchun buni General mavzusida ishga tushiring.',
+  'compactOnIdle.titleGeneral': '🧹 Bo‘sh turganda avtosiqish — BARCHA mavzular uchun standart: {state}\n\nSeans ~55 daqiqa bo‘sh tursa, tokenlarni tejash uchun uning konteksti avtomatik siqiladi.\n\nHar bir mavzu buni o‘zining /compact_on_idle bilan bekor qila oladi.',
+  'compactOnIdle.enableButton': 'Yoqish',
+  'compactOnIdle.disableButton': 'O‘chirish',
+  'compactOnIdle.setThisTopic': '✅ Bo‘sh turganda avtosiqish: bu mavzu uchun {state}.',
+  'compactOnIdle.setGlobal': '✅ Bo‘sh turganda avtosiqish: BARCHA mavzular uchun {state} (mavzu bo‘yicha bekor qilishlar amal qiladi).',
+  'compactOnIdle.unsupported': 'Bo‘sh turganda avtosiqish faol agent seansiga taalluqli. Avval bog‘langan mavzuda /claude yoki /opencode ni ishga tushiring.',
+  'compactOnIdle.pendingQuestionReask': '❓ Sizda hali javob berilmagan savol bor. Javob berib davom etish uchun variantni bosing:',
 
   'connect.prompt_key': '🔑 Keyingi xabar sifatida `{provider}` uchun API kalitni yuboring. Kalit xabarini tarixdan o‘chiraman.',
   'connect.empty_key': '❌ API kalit bo‘sh. Keyingi xabar sifatida kalitni yuboring.',

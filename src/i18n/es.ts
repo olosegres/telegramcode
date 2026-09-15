@@ -76,6 +76,7 @@ export const esDict: Record<string, string> = {
     '/verbosity — verbosidad de salida (thinking/tools/sub-agentes)\n' +
     '/quit /status /output — control\n' +
     '/compact — compactar el contexto del agente\n' +
+    '/compact_on_idle — compactar automáticamente tras inactividad (conmutador)\n' +
     '/clear — eliminar mensajes del hilo\n' +
     '/c /y /n /enter /up /down /tab /esc — teclas TUI (Claude)\n' +
     '/bind — gestionar vínculo',
@@ -304,6 +305,19 @@ export const esDict: Record<string, string> = {
   'compact.unsupported_backend': 'La compactación del contexto no es compatible con {label}.',
   'compact.model_unresolved': '⚠️ No se puede compactar: no hay modelo resuelto para esta sesión. Elige uno con /model e inténtalo de nuevo.',
   'compact.failed': '⚠️ Error al compactar el contexto de la sesión: {reason}',
+  'compact.busy': '⚠️ El agente está ocupado ahora — vuelve a ejecutar /compact cuando termine el turno actual.',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN SPANISH: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 Compactado automáticamente por inactividad para ahorrar tokens mediante la caché.\nEjecuta /compact_on_idle para desactivarlo.',
+  'compactOnIdle.on': 'ACTIVADO',
+  'compactOnIdle.off': 'DESACTIVADO',
+  'compactOnIdle.title': '🧹 Compactado automático por inactividad para este tema: {state}\n\nCuando la sesión queda inactiva ~55 min, su contexto se compacta automáticamente para ahorrar tokens (la caché de prompt sigue caliente).\n\nPara cambiarlo para TODOS los temas a la vez, ejecútalo en el tema General.',
+  'compactOnIdle.titleGeneral': '🧹 Compactado automático por inactividad — predeterminado para TODOS los temas: {state}\n\nCuando una sesión queda inactiva ~55 min, su contexto se compacta automáticamente para ahorrar tokens.\n\nCada tema puede anularlo con su propio /compact_on_idle.',
+  'compactOnIdle.enableButton': 'Activar',
+  'compactOnIdle.disableButton': 'Desactivar',
+  'compactOnIdle.setThisTopic': '✅ Compactado automático por inactividad: {state} para este tema.',
+  'compactOnIdle.setGlobal': '✅ Compactado automático por inactividad: {state} para TODOS los temas (las anulaciones por tema siguen aplicándose).',
+  'compactOnIdle.unsupported': 'El compactado automático por inactividad se aplica a una sesión de agente activa. Inicia primero /claude o /opencode en un tema vinculado.',
+  'compactOnIdle.pendingQuestionReask': '❓ Aún tienes una pregunta pendiente. Toca una opción para responderla y continuar:',
 
   'connect.prompt_key': '🔑 Envía la API key para `{provider}` como próximo mensaje. Eliminaré el mensaje con la clave del historial.',
   'connect.empty_key': '❌ La API key está vacía. Envía la clave como próximo mensaje.',

@@ -76,6 +76,7 @@ export const kaDict: Record<string, string> = {
     '/verbosity — გამოტანის დეტალურობა (thinking/tools/ქვე-აგენტები)\n' +
     '/quit /status /output — კონტროლი\n' +
     '/compact — აგენტის კონტექსტის შეკუმშვა\n' +
+    '/compact_on_idle — უმოქმედობის შემდეგ ავტო-შეკუმშვა (გადამრთველი)\n' +
     '/clear — თემის შეტყობინებების წაშლა\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI ღილაკები (Claude)\n' +
     '/bind — კავშირის მართვა',
@@ -304,6 +305,19 @@ export const kaDict: Record<string, string> = {
   'compact.unsupported_backend': '{label}-ისთვის კონტექსტის შეკუმშვა არ არის მხარდაჭერილი.',
   'compact.model_unresolved': '⚠️ შეკუმშვა ვერ ხდება: ამ სესიისთვის მოდელი ვერ დადგინდა. აირჩიეთ /model-ით და სცადეთ ხელახლა.',
   'compact.failed': '⚠️ სესიის კონტექსტის შეკუმშვა ვერ მოხერხდა: {reason}',
+  'compact.busy': '⚠️ აგენტი ამჟამად დაკავებულია — ხელახლა გაუშვი /compact მიმდინარე რაუნდის დასრულების შემდეგ.',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN GEORGIAN: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 უმოქმედობისას ავტომატურად შეიკუმშა, ქეშის ხარჯზე ტოკენების დასაზოგად.\nგამოსართავად გაუშვი /compact_on_idle.',
+  'compactOnIdle.on': 'ჩართ.',
+  'compactOnIdle.off': 'გამორთ.',
+  'compactOnIdle.title': '🧹 ამ თემისთვის უმოქმედობისას ავტო-შეკუმშვა: {state}\n\nროცა სესია ~55 წუთი უმოქმედოა, მისი კონტექსტი ავტომატურად იკუმშება ტოკენების დასაზოგად (პრომფთის ქეში ჯერ ისევ თბილია).\n\nყველა თემისთვის ერთდროულად გადასართავად გაუშვი ეს General თემაში.',
+  'compactOnIdle.titleGeneral': '🧹 უმოქმედობისას ავტო-შეკუმშვა — ნაგულისხმევი ყველა თემისთვის: {state}\n\nროცა სესია ~55 წუთი უმოქმედოა, მისი კონტექსტი ავტომატურად იკუმშება ტოკენების დასაზოგად.\n\nყოველ თემას შეუძლია ეს გადააჭარბოს საკუთარი /compact_on_idle-ით.',
+  'compactOnIdle.enableButton': 'ჩართვა',
+  'compactOnIdle.disableButton': 'გამორთვა',
+  'compactOnIdle.setThisTopic': '✅ უმოქმედობისას ავტო-შეკუმშვა: {state} ამ თემისთვის.',
+  'compactOnIdle.setGlobal': '✅ უმოქმედობისას ავტო-შეკუმშვა: {state} ყველა თემისთვის (თემების მიხედვით გადაფარვები კვლავ მოქმედებს).',
+  'compactOnIdle.unsupported': 'უმოქმედობისას ავტო-შეკუმშვა მოქმედებს აქტიურ აგენტის სესიაზე. ჯერ დაბმულ თემაში გაუშვი /claude ან /opencode.',
+  'compactOnIdle.pendingQuestionReask': '❓ შენ ჯერ კიდევ გაქვს უპასუხო კითხვა. შეეხე ვარიანტს, რომ უპასუხო და გააგრძელო:',
 
   'connect.prompt_key': '🔑 შემდეგ შეტყობინებად გამოგვიგზავნეთ `{provider}`-ის API გასაღები. გასაღების შეტყობინებას ისტორიიდან წავშლი.',
   'connect.empty_key': '❌ API გასაღები ცარიელია. შემდეგ შეტყობინებად გამოგვიგზავნეთ გასაღები.',

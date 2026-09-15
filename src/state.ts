@@ -15,6 +15,7 @@ import {
   type ThreadKey,
 } from './types';
 import { defaultDisplayVerbosityMode, normalizeDisplayVerbosityMode } from './utils/displayVerbosity';
+import { resolveCompactOnIdleEnabled } from './utils/compactOnIdle';
 import type { ScheduleRecord } from './scheduler/types';
 import type { Locale } from './i18n';
 
@@ -226,6 +227,31 @@ export interface StateV1 {
    * teardown. Optional so older state files stay valid.
    */
   hiddenModelProviders?: string[];
+  /**
+   * Compact-on-idle toggle (`/compact_on_idle`). `compactOnIdleEnabled` is the
+   * INSTANCE-WIDE default, driven from the General topic; absent ⇒ ON (the
+   * feature ships enabled, mirroring `traceAllThreads`), stored EXPLICITLY (incl.
+   * `false`) so a General «Disable» is durable and not re-enabled by the default
+   * on the next boot. `compactOnIdleOverrides` holds per-thread explicit
+   * overrides keyed by {@link ThreadKey} string — a present entry (true OR false)
+   * wins over the global default; absent ⇒ follow the default. Both optional so
+   * older state files stay valid; lifecycle-independent (only `/compact_on_idle`
+   * mutates them, never session teardown).
+   */
+  compactOnIdleEnabled?: boolean;
+  compactOnIdleOverrides?: Record<string, boolean>;
+  /**
+   * Threads whose compact-on-idle user-LATCH is spent (D2). A thread lands here
+   * the instant an idle-compaction FIRES and is removed only by the next genuine
+   * USER message — so idle compaction runs at most once per user-active period,
+   * and (crucially) a bot restart cannot re-enable a second fire: the reattach
+   * re-arms the idle timer ONLY for threads absent from this set. Same
+   * deduped/sorted {@link ThreadKey}-string shape as `timestampThreads` (dropped
+   * when empty), and equally lifecycle-independent — only a fire and a user
+   * message mutate it, never session teardown. Optional so older state files stay
+   * valid (a missing value = no thread latched).
+   */
+  compactIdleLatchedThreads?: string[];
   /**
    * Persisted scheduled jobs, keyed by {@link ScheduleRecord.id}. Optional so
    * older state files (created before the scheduler feature) stay valid —
@@ -1185,6 +1211,93 @@ export class StateStore {
     const uniqueProviders = [...current].sort();
     if (uniqueProviders.length > 0) this.state.hiddenModelProviders = uniqueProviders;
     else delete this.state.hiddenModelProviders;
+    this.scheduleSave();
+  }
+
+  // ── compact-on-idle toggle (`/compact_on_idle`) ──
+
+  /**
+   * @description The instance-wide compact-on-idle default (driven from the
+   * General topic). ON when unset — same always-on default as
+   * {@link getTraceConfig}'s `allThreads`.
+   */
+  getCompactOnIdleGlobalDefault(): boolean {
+    return this.state.compactOnIdleEnabled ?? true;
+  }
+
+  /**
+   * @description The per-thread compact-on-idle override, or `undefined` when the
+   * thread follows the instance default. A present value (true OR false) wins.
+   */
+  getCompactOnIdleOverride(key: ThreadKey): boolean | undefined {
+    return this.state.compactOnIdleOverrides?.[keyToString(key)];
+  }
+
+  /**
+   * @description Whether compact-on-idle is effectively enabled for `key`: the
+   * per-thread override if set, else the instance default (ON when unset).
+   */
+  checkIsCompactOnIdleEnabled(key: ThreadKey): boolean {
+    return resolveCompactOnIdleEnabled(
+      this.state.compactOnIdleEnabled,
+      this.getCompactOnIdleOverride(key),
+    );
+  }
+
+  /**
+   * @description Set the instance-wide compact-on-idle default (from General).
+   * Stored EXPLICITLY as a boolean (incl. `false`) so a «Disable» is durable and
+   * distinguishable from "never set" (which reads back as the ON default) —
+   * mirrors {@link setTraceConfig}'s `traceAllThreads` discipline. Debounced (a
+   * preference, not crash-critical).
+   */
+  async setCompactOnIdleGlobalDefault(enabled: boolean): Promise<void> {
+    if (this.state.compactOnIdleEnabled === enabled) return;
+    this.state.compactOnIdleEnabled = enabled;
+    this.scheduleSave();
+  }
+
+  /**
+   * @description Set the per-thread compact-on-idle override (from a regular
+   * topic). Stored explicitly (a present true/false wins over the global
+   * default); the whole map is dropped once empty so an all-default instance
+   * leaves a clean `state.json`. Debounced.
+   */
+  async setCompactOnIdleOverride(key: ThreadKey, enabled: boolean): Promise<void> {
+    const k = keyToString(key);
+    await this.withLock(key, async () => {
+      if (this.state.compactOnIdleOverrides?.[k] === enabled) return;
+      (this.state.compactOnIdleOverrides ??= {})[k] = enabled;
+      this.scheduleSave();
+    });
+  }
+
+  /**
+   * @description Whether `key`'s compact-on-idle user-latch is spent (D2): an
+   * idle-compaction already fired this user-active period and no genuine USER
+   * message has re-armed it since. Read by the idle watchdog's fire guard and by
+   * the timer-arming path (a latched thread never re-arms — so a restart can't
+   * re-fire). Default `false` (never latched).
+   */
+  checkIsCompactIdleLatched(key: ThreadKey): boolean {
+    return this.state.compactIdleLatchedThreads?.includes(keyToString(key)) ?? false;
+  }
+
+  /**
+   * @description Set/clear `key`'s compact-on-idle user-latch (D2). Set on a
+   * fire, cleared on a genuine USER message / fresh session start. Mirrors
+   * {@link setTimestampsEnabled}'s shape discipline (deduped + sorted, dropped
+   * when empty) and rides the debounced save loop — the persistence is only a
+   * restart guard, so losing the last <=500ms is at worst one extra fire.
+   */
+  async setCompactIdleLatched(key: ThreadKey, isLatched: boolean): Promise<void> {
+    const keyStr = keyToString(key);
+    const current = new Set(this.state.compactIdleLatchedThreads ?? []);
+    if (isLatched) current.add(keyStr);
+    else current.delete(keyStr);
+    const uniqueKeys = [...current].sort();
+    if (uniqueKeys.length > 0) this.state.compactIdleLatchedThreads = uniqueKeys;
+    else delete this.state.compactIdleLatchedThreads;
     this.scheduleSave();
   }
 

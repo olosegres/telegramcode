@@ -591,6 +591,41 @@ test('timestamps: off removes the thread and drops an empty list on disk', async
   assert.equal('timestampThreads' in raw, false, 'empty list must be absent on disk');
 });
 
+// ── compact-on-idle user latch (/compact_on_idle, D2) ──
+
+test('compactIdleLatch: default un-latched on a fresh state file', async () => {
+  const store = new StateStore(dataDir, { saveDebounceMs: 5 });
+  await store.init();
+  assert.equal(store.checkIsCompactIdleLatched(key1), false);
+});
+
+test('compactIdleLatch: latching persists, survives a reload, and is per-thread', async () => {
+  // THE restart guard — a spent latch must survive a bot restart so a second
+  // idle-compaction cannot fire without a new user message.
+  const first = new StateStore(dataDir, { saveDebounceMs: 5 });
+  await first.init();
+  await first.setCompactIdleLatched(key1, true);
+  assert.equal(first.checkIsCompactIdleLatched(key1), true);
+  assert.equal(first.checkIsCompactIdleLatched(key2), false, 'latch is per-thread');
+  await first.flush();
+
+  const second = new StateStore(dataDir, { saveDebounceMs: 5 });
+  await second.init();
+  assert.equal(second.checkIsCompactIdleLatched(key1), true, 'latch survives reload');
+  assert.equal(second.checkIsCompactIdleLatched(key2), false);
+});
+
+test('compactIdleLatch: clearing (user message) drops an empty list on disk', async () => {
+  const store = new StateStore(dataDir, { saveDebounceMs: 5 });
+  await store.init();
+  await store.setCompactIdleLatched(key1, true);
+  await store.setCompactIdleLatched(key1, false);
+  assert.equal(store.checkIsCompactIdleLatched(key1), false);
+  await store.flush();
+  const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'state.json'), 'utf8'));
+  assert.equal('compactIdleLatchedThreads' in raw, false, 'empty list must be absent on disk');
+});
+
 // ── setTransientFrames (transient status-frame ids — restart cleanup, S2) ──
 
 test('setTransientFrames: set → get round-trips the id list for a thread', async () => {

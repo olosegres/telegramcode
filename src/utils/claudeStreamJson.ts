@@ -95,6 +95,12 @@ export type ClaudeStreamAction =
       toolUseId?: string;
       dialogKind?: string;
     }
+  /** `system/status` carrying a `/compact` outcome (`compact_result` /
+   *  `compact_error`) — how the json-stream backend confirms a compaction ran. */
+  | { kind: 'compactStatus'; result: string | null; error: string | null }
+  /** `system/compact_boundary` — a completed compaction; `compact_metadata`
+   *  carries `trigger` (manual/auto) and pre/post token counts. */
+  | { kind: 'compactBoundary'; trigger: string | null; preTokens: number | null; postTokens: number | null }
   /** `system/api_retry` — a provider retry the CLI is performing. */
   | { kind: 'apiRetry'; text: string }
   /** `rate_limit_event` — subscription usage window signal (billing proof). */
@@ -137,6 +143,26 @@ export function classifyClaudeStreamMessage(msg: Record<string, unknown>): Claud
       sessionId: readString(msg, 'session_id'),
       model: readString(msg, 'model'),
       apiKeySource: readString(msg, 'apiKeySource'),
+    }];
+  }
+
+  if (type === 'system' && msg.subtype === 'status') {
+    // A `/compact` turn reports its outcome on a status frame carrying
+    // `compact_result` (e.g. "success") and, on failure, `compact_error`. Every
+    // other status frame (a plain `status` string) is not interesting.
+    if ('compact_result' in msg || 'compact_error' in msg) {
+      return [{ kind: 'compactStatus', result: readString(msg, 'compact_result'), error: readString(msg, 'compact_error') }];
+    }
+    return [];
+  }
+
+  if (type === 'system' && msg.subtype === 'compact_boundary') {
+    const meta = checkIsStreamRecord(msg.compact_metadata) ? msg.compact_metadata : {};
+    return [{
+      kind: 'compactBoundary',
+      trigger: readString(meta, 'trigger'),
+      preTokens: typeof meta.pre_tokens === 'number' ? meta.pre_tokens : null,
+      postTokens: typeof meta.post_tokens === 'number' ? meta.post_tokens : null,
     }];
   }
 

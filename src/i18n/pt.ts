@@ -76,6 +76,7 @@ export const ptDict: Record<string, string> = {
     '/verbosity — verbosidade de saída (thinking/tools/sub-agentes)\n' +
     '/quit /status /output — controlo\n' +
     '/compact — compactar o contexto do agente\n' +
+    '/compact_on_idle — compactar automaticamente após inatividade (alternar)\n' +
     '/clear — apagar mensagens do tópico\n' +
     '/c /y /n /enter /up /down /tab /esc — teclas TUI (Claude)\n' +
     '/bind — gerir vínculo',
@@ -304,6 +305,19 @@ export const ptDict: Record<string, string> = {
   'compact.unsupported_backend': 'A compactação de contexto não é suportada para {label}.',
   'compact.model_unresolved': '⚠️ Não é possível compactar: nenhum modelo está resolvido para esta sessão. Escolhe um com /model e tenta novamente.',
   'compact.failed': '⚠️ Falha ao compactar o contexto da sessão: {reason}',
+  'compact.busy': '⚠️ O agente está ocupado agora — execute /compact de novo quando o turno atual terminar.',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN PORTUGUESE: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 Compactado automaticamente por inatividade para economizar tokens via cache.\nExecute /compact_on_idle para desativar.',
+  'compactOnIdle.on': 'LIGADO',
+  'compactOnIdle.off': 'DESLIGADO',
+  'compactOnIdle.title': '🧹 Compactação automática por inatividade para este tópico: {state}\n\nQuando a sessão fica inativa ~55 min, seu contexto é compactado automaticamente para economizar tokens (o cache de prompt ainda está quente).\n\nPara mudar para TODOS os tópicos de uma vez, execute isto no tópico General.',
+  'compactOnIdle.titleGeneral': '🧹 Compactação automática por inatividade — padrão para TODOS os tópicos: {state}\n\nQuando uma sessão fica inativa ~55 min, seu contexto é compactado automaticamente para economizar tokens.\n\nCada tópico ainda pode substituir isso com seu próprio /compact_on_idle.',
+  'compactOnIdle.enableButton': 'Ativar',
+  'compactOnIdle.disableButton': 'Desativar',
+  'compactOnIdle.setThisTopic': '✅ Compactação automática por inatividade: {state} para este tópico.',
+  'compactOnIdle.setGlobal': '✅ Compactação automática por inatividade: {state} para TODOS os tópicos (substituições por tópico ainda se aplicam).',
+  'compactOnIdle.unsupported': 'A compactação automática por inatividade aplica-se a uma sessão de agente ativa. Inicie /claude ou /opencode em um tópico vinculado primeiro.',
+  'compactOnIdle.pendingQuestionReask': '❓ Você ainda tem uma pergunta pendente. Toque em uma opção para respondê-la e continuar:',
 
   'connect.prompt_key': '🔑 Envia a API key para `{provider}` como próxima mensagem. Vou apagar a mensagem com a chave do histórico.',
   'connect.empty_key': '❌ A API key está vazia. Envia a chave como próxima mensagem.',

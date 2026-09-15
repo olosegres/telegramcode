@@ -76,6 +76,7 @@ export const hiDict: Record<string, string> = {
     '/verbosity — आउटपुट विस्तार (thinking/tools/सब-एजेंट)\n' +
     '/quit /status /output — नियंत्रण\n' +
     '/compact — एजेंट संदर्भ संक्षिप्त करें\n' +
+    '/compact_on_idle — निष्क्रियता के बाद स्वतः संक्षेपण (टॉगल)\n' +
     '/clear — थ्रेड संदेश हटाएँ\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI कुंजी (Claude)\n' +
     '/bind — बाइंडिंग प्रबंधित करें',
@@ -304,6 +305,19 @@ export const hiDict: Record<string, string> = {
   'compact.unsupported_backend': '{label} के लिए संदर्भ संक्षेपण समर्थित नहीं।',
   'compact.model_unresolved': '⚠️ संक्षिप्त नहीं कर सकते: इस सत्र के लिए कोई मॉडल तय नहीं है। /model से एक चुनें और फिर प्रयास करें।',
   'compact.failed': '⚠️ सत्र का संदर्भ संक्षिप्त करने में विफल: {reason}',
+  'compact.busy': '⚠️ एजेंट अभी व्यस्त है — वर्तमान टर्न पूरा होने पर फिर से /compact चलाएँ।',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN HINDI: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 निष्क्रिय रहने पर कैश के ज़रिए टोकन बचाने के लिए स्वतः संक्षिप्त कर दिया गया।\nबंद करने के लिए /compact_on_idle चलाएँ।',
+  'compactOnIdle.on': 'चालू',
+  'compactOnIdle.off': 'बंद',
+  'compactOnIdle.title': '🧹 इस विषय के लिए निष्क्रियता पर स्वतः संक्षेपण: {state}\n\nजब सत्र ~55 मिनट निष्क्रिय रहता है, तो टोकन बचाने के लिए इसका संदर्भ स्वतः संक्षिप्त हो जाता है (प्रॉम्प्ट कैश अभी भी गर्म रहता है)।\n\nसभी विषयों के लिए एक साथ बदलने हेतु इसे General विषय में चलाएँ।',
+  'compactOnIdle.titleGeneral': '🧹 निष्क्रियता पर स्वतः संक्षेपण — सभी विषयों के लिए डिफ़ॉल्ट: {state}\n\nजब कोई सत्र ~55 मिनट निष्क्रिय रहता है, तो टोकन बचाने के लिए इसका संदर्भ स्वतः संक्षिप्त हो जाता है।\n\nप्रत्येक विषय अपने /compact_on_idle से इसे बदल सकता है।',
+  'compactOnIdle.enableButton': 'सक्षम करें',
+  'compactOnIdle.disableButton': 'अक्षम करें',
+  'compactOnIdle.setThisTopic': '✅ निष्क्रियता पर स्वतः संक्षेपण: इस विषय के लिए {state}।',
+  'compactOnIdle.setGlobal': '✅ निष्क्रियता पर स्वतः संक्षेपण: सभी विषयों के लिए {state} (प्रति-विषय ओवरराइड अब भी लागू रहते हैं)।',
+  'compactOnIdle.unsupported': 'निष्क्रियता पर स्वतः संक्षेपण किसी सक्रिय एजेंट सत्र पर लागू होता है। पहले किसी बाउंड विषय में /claude या /opencode शुरू करें।',
+  'compactOnIdle.pendingQuestionReask': '❓ आपका एक प्रश्न अब भी लंबित है। उत्तर देकर आगे बढ़ने के लिए किसी विकल्प पर टैप करें:',
 
   'connect.prompt_key': '🔑 अगले संदेश में `{provider}` के लिए API key भेजें। मैं key संदेश को इतिहास से हटा दूँगा।',
   'connect.empty_key': '❌ API key खाली है। अगले संदेश में key भेजें।',

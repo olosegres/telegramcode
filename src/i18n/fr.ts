@@ -76,6 +76,7 @@ export const frDict: Record<string, string> = {
     '/verbosity — verbosité de sortie (thinking/tools/sous-agents)\n' +
     '/quit /status /output — contrôle\n' +
     '/compact — compacter le contexte de l\'agent\n' +
+    '/compact_on_idle — compactage auto après inactivité (bascule)\n' +
     '/clear — supprimer les messages du fil\n' +
     '/c /y /n /enter /up /down /tab /esc — touches TUI (Claude)\n' +
     '/bind — gérer la liaison',
@@ -304,6 +305,19 @@ export const frDict: Record<string, string> = {
   'compact.unsupported_backend': 'Le compactage du contexte n\'est pas pris en charge pour {label}.',
   'compact.model_unresolved': '⚠️ Compactage impossible : aucun modèle n\'est résolu pour cette session. Choisissez-en un avec /model puis réessayez.',
   'compact.failed': '⚠️ Échec du compactage du contexte de la session : {reason}',
+  'compact.busy': '⚠️ L\'agent est occupé pour le moment — relance /compact une fois le tour en cours terminé.',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN FRENCH: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 Compacté automatiquement en cas d’inactivité pour économiser des tokens via le cache.\nLance /compact_on_idle pour le désactiver.',
+  'compactOnIdle.on': 'ACTIVÉ',
+  'compactOnIdle.off': 'DÉSACTIVÉ',
+  'compactOnIdle.title': '🧹 Compactage auto en cas d’inactivité pour ce sujet : {state}\n\nQuand la session reste inactive ~55 min, son contexte est compacté automatiquement pour économiser des tokens (le cache de prompt est encore chaud).\n\nPour le changer pour TOUS les sujets d’un coup, lance ceci dans le sujet General.',
+  'compactOnIdle.titleGeneral': '🧹 Compactage auto en cas d’inactivité — défaut pour TOUS les sujets : {state}\n\nQuand une session reste inactive ~55 min, son contexte est compacté automatiquement pour économiser des tokens.\n\nChaque sujet peut le remplacer avec son propre /compact_on_idle.',
+  'compactOnIdle.enableButton': 'Activer',
+  'compactOnIdle.disableButton': 'Désactiver',
+  'compactOnIdle.setThisTopic': '✅ Compactage auto en cas d’inactivité : {state} pour ce sujet.',
+  'compactOnIdle.setGlobal': '✅ Compactage auto en cas d’inactivité : {state} pour TOUS les sujets (les remplacements par sujet s’appliquent toujours).',
+  'compactOnIdle.unsupported': 'Le compactage auto en cas d’inactivité s’applique à une session d’agent active. Lance d’abord /claude ou /opencode dans un sujet lié.',
+  'compactOnIdle.pendingQuestionReask': '❓ Tu as encore une question en attente. Touche une option pour y répondre et continuer :',
 
   'connect.prompt_key': '🔑 Envoyez la clé API pour `{provider}` comme prochain message. Je supprimerai le message contenant la clé de l\'historique.',
   'connect.empty_key': '❌ La clé API est vide. Envoyez la clé comme prochain message.',

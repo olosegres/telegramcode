@@ -76,6 +76,7 @@ export const zhDict: Record<string, string> = {
     '/verbosity — 输出详细度（thinking/tools/子代理）\n' +
     '/quit /status /output — 控制\n' +
     '/compact — 压缩代理上下文\n' +
+    '/compact_on_idle — 空闲后自动压缩（开关）\n' +
     '/clear — 删除话题消息\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI 按键（Claude）\n' +
     '/bind — 管理绑定',
@@ -304,6 +305,19 @@ export const zhDict: Record<string, string> = {
   'compact.unsupported_backend': '{label} 不支持压缩上下文。',
   'compact.model_unresolved': '⚠️ 无法压缩：此会话未解析出模型。请用 /model 选择一个后重试。',
   'compact.failed': '⚠️ 压缩会话上下文失败：{reason}',
+  'compact.busy': '⚠️ 代理正忙——请在当前回合结束后再次运行 /compact。',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN CHINESE: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 空闲时已自动压缩，借助缓存节省 token。\n运行 /compact_on_idle 可关闭。',
+  'compactOnIdle.on': '开',
+  'compactOnIdle.off': '关',
+  'compactOnIdle.title': '🧹 本话题的空闲自动压缩：{state}\n\n当会话空闲约 55 分钟时，会自动压缩其上下文以节省 token（此时提示缓存仍是热的）。\n\n要一次性切换所有话题，请在 General 话题中运行此命令。',
+  'compactOnIdle.titleGeneral': '🧹 空闲自动压缩——所有话题的默认值：{state}\n\n当会话空闲约 55 分钟时，会自动压缩其上下文以节省 token。\n\n每个话题仍可用自己的 /compact_on_idle 覆盖此设置。',
+  'compactOnIdle.enableButton': '启用',
+  'compactOnIdle.disableButton': '停用',
+  'compactOnIdle.setThisTopic': '✅ 空闲自动压缩：本话题 {state}。',
+  'compactOnIdle.setGlobal': '✅ 空闲自动压缩：所有话题 {state}（各话题的覆盖设置仍然有效）。',
+  'compactOnIdle.unsupported': '空闲自动压缩适用于活动的代理会话。请先在已绑定的话题中启动 /claude 或 /opencode。',
+  'compactOnIdle.pendingQuestionReask': '❓ 你还有一个待回答的问题。点击一个选项来回答并继续：',
 
   'connect.prompt_key': '🔑 在下一条消息中发送 `{provider}` 的 API key。我会从历史中删除包含 key 的消息。',
   'connect.empty_key': '❌ API key 为空。请在下一条消息中发送 key。',

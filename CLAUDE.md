@@ -317,7 +317,9 @@ config/variants, not a per-message API field).
   tools; fire-and-forget so boot never blocks on opencode). The scheduler MCP
   listen port is OS-ephemeral by default but PERSISTED in `state.json`
   (`schedulerMcpPort`) and reused across restarts so injected URLs stay valid
-  (env `SCHEDULER_MCP_PORT` pins it and wins). This server exposes the `schedule_*` tools plus `send_file_to_user`
+  (env `SCHEDULER_MCP_PORT` pins it and wins). This server exposes the `schedule_*` tools plus `compact_conversation`
+  (agent→bot self-compaction — F1, thread-scoped; arms a compaction that runs when
+  the current turn ends, never mid-turn; call only on an explicit user request) plus `send_file_to_user`
   (agent→user file/image send into the topic, dir/thread-scoped exactly like the
   `schedule_*` tools — no new server/port/token/injection) and `send_messages_to_user`
   (agent→user per-message delivery: each array item posted as its OWN Telegram
@@ -508,7 +510,8 @@ config/variants, not a per-message API field).
 | `utils/linkPreviewSuppression.ts` | Default every outgoing text `sendMessage`/`editMessageText` to NO link preview (`link_preview_options.is_disabled`), injected at the shared `callApi` choke point (installed right after `installCallApiTrace`, sits outside it so the trace records what is sent). A caller that sets its own `link_preview_options` / `disable_web_page_preview` wins; media methods are untouched. Reason: a bare URL in agent output otherwise expanded a large preview card, one per message, in the muted topic |
 | `apiErrorRetry.ts` | Pure auto-retry decision layer for agent **API** errors: `classifyAgentApiError` (transient / usageLimit / null-for-auth; markers from the claude.exe strings), `parseResetAt`, `getRetryPlan` (backoff schedule), `decideRetryAction` (arm/ignore/giveUp + grace-window dedup). The `bot.ts` manager owns the timer + kick |
 | `utils/claudeAuthLogin.ts` | Pure helpers behind the json-stream `/login` out-of-band flow: `parseClaudeAuthLoginUrl` (clean OAuth URL out of the ANSI/OSC-8 pty output — stops at the BEL), `checkIsClaudeAuthLoginCodePrompt` (the "paste code" gate; shares `claudeLoginPastePromptRe` with the tmux login-paste detection), `parseAuthStatusLoggedIn` + `checkIsAuthLoginSucceeded` (status-authoritative, exit-code fallback), `getLoginCommandRoute` (`outOfBand` only for a json-stream RAW pick, else `forwardToAgent`). The impure pty driver + per-thread state live in `bot.ts` (`startClaudeAuthLogin` / `submitClaudeAuthLoginCode` / `cancelClaudeAuthLogin`) |
-| `utils/compactCommandRoute.ts` | Pure three-way route for the bot-owned `/compact`: `getCompactCommandRoute({hasCompactContext, adapterName, terminalAdapterName})` → `adapterCompact` (the backend has a real compaction endpoint — OpenCode's `compactContext`), `notSupported` (terminal: a shell has no context), else `forwardToAgent` (both Claude backends parse `/compact` natively). Kept out of `bot.ts` so the decision is unit-testable, like `getLoginCommandRoute` |
+| `utils/compactCommandRoute.ts` | Pure three-way route for the bot-owned `/compact`: `getCompactCommandRoute({hasCompactContext, adapterName, terminalAdapterName})` → `adapterCompact` (the backend has a real compaction path — OpenCode + json-stream Claude implement `compactContext`), `notSupported` (terminal: a shell has no context), else `forwardToAgent` (the tmux Claude backend parses `/compact` natively). Kept out of `bot.ts` so the decision is unit-testable, like `getLoginCommandRoute` |
+| `utils/compactOnIdle.ts` | Pure helpers for compact-on-idle (F2) + the shared closing-section + the D3 summary guidance: `idleCompactMs` (55min), `resolveCompactOnIdleEnabled` (per-thread override wins, else default-on), `checkShouldFireIdleCompaction` (enabled+active+not-real-turn-busy+not-latched+has-turn fire guard), `checkIsBusyForRealTurn` (`isBusy && !hasPendingQuestion` — a pending question is NOT a blocker, D1), `compactionSummaryGuidance` (the D3 maximally-complete + session-specific text, a code constant kept consistent with the OpenCode fork's baked prompt) + `buildCompactionInstruction` (compose D3 guidance — skipped for OpenCode, which bakes it — + the F2 closing directive), the closing sentinel markers (`compactionClosingStartMarker`/`compactionClosingEndMarker`), and `extractCompactionClosingSection` (lift the "Where we stopped" prose out of a generated summary, backend-agnostic). `bot.ts` owns the per-thread timers (`runThreadCompaction` seam, the idle watchdog, the F1 deferred-arm drain), the persisted user-latch (`state.compactIdleLatchedThreads`, cleared by `noteThreadUserActivity`), and the D1 re-ask (`reAskedQuestionOptions` + the `reask_<idx>` action) |
 | `utils/openCodeAuthLogin.ts` | Pure helpers behind OpenCode `/connect`: custom OAuth/multi-step methods come from `/provider/auth`; ordinary providers (including OpenRouter) are validated against the full `/provider` catalog and receive the generic API-key method used by OpenCode's native picker. Also owns OAuth pty parsing and `auth.json` success checks |
 | `openCodeSessionRouting.ts` | Pure helpers: match an SSE event to its owning session via child→parent lineage (`checkIsEventForSession`), record lineage (`updateSessionLineage`), verify strict descent (`getLineageDepthToAncestor` — busy tracking records a busy CHILD only for a verified descendant, so a dir-fallback-routed foreign sibling's busy=true never pins the thread busy) |
 | `utils/sseStreamLifecycle.ts` | Pure decision logic for the OpenCode adapter's single `/global/event` stream: open/close edge detection (`getSseStreamTransition`, driven by the TOTAL active-session count — open on first session anywhere, close on last). The per-directory helpers (`countActiveSessionsForDirectory`, `getWantedStreamDirectories`) now serve scheduler-MCP per-directory tracking, not the stream |
@@ -539,7 +542,7 @@ config/variants, not a per-message API field).
 | `scheduler/store.ts` | Schedule records: create path (slug ids, ≤30/thread cap, `isPinSilent`), persisted in `state.json` `schedules` (lifecycle-independent) |
 | `scheduler/engine.ts` | Timer engine: one unref'd timer per job, boot replay with one-catch-up-per-missed-run, no-overlap guard, N-times/once bookkeeping, `whenIdle` drain |
 | `scheduler/delivery.ts` | Fire pipeline: announce → pin (notify by default) → wait-for-idle (5s polls, 10 min cap) → forward with the `[Scheduled run]` marker; unbound topic → distinct error |
-| `scheduler/mcpSurface.ts` | Bot-owned MCP server (stateless streamable HTTP on an OS-chosen loopback port unless `SCHEDULER_MCP_PORT` pins one): `schedule_create/list/cancel` + `send_file_to_user` (agent→Telegram file/image, separate `registerFileSendTool`; an ambiguous post-invocation outcome is non-error structured content `{ kind: 'deliveryUnknown', retryable: false }`) + `send_messages_to_user` (agent→Telegram per-message delivery: each `messages[]` item its OWN message, never merged, separate `registerMessageSendTool` → `deps.sendMessagesToThread`; an item is a plain string OR `{text?, path?, as_file?}` — a `path` item routes through `deps.sendFilesToThread` as a single-file attachment with `text`→caption, `dir`-scope passes `authorizedWorkDir`, and a `deliveryUnknown` relays as the same non-error structured content; capped at `maxDiscreteMessages`, total-failure → error), HMAC bearer tokens scoped `thread:`/`dir:`. Because MCP cancellation is a separate HTTP notification while each transport is fresh, the HTTP server correlates by verified token + validated bounded client id + typed request id (verified-token fallback for legacy registrations), retains a bounded 30-second cancellation-before-registration tombstone set, and combines that controller with the SDK handler signal. Reports a short connect-time `instructions` (`mcpServerInstructions`, returned in the MCP `initialize` handshake) — a use-case pointer (when to reach for the server, what it can do); per-tool argument recipes stay in each tool's own `description`. NOTE: connect-time `instructions` + tool descriptions are cached by the client at connect — an already-running agent won't see edits until it reconnects; only tool RESULTS reflect live server code |
+| `scheduler/mcpSurface.ts` | Bot-owned MCP server (stateless streamable HTTP on an OS-chosen loopback port unless `SCHEDULER_MCP_PORT` pins one): `schedule_create/list/cancel` + `compact_conversation` (F1 agent-triggered self-compaction, `registerCompactConversationTool` → `deps.compactConversation` → the bot's `armDeferredCompaction`; thread-scoped, drains on turn-idle) + `send_file_to_user` (agent→Telegram file/image, separate `registerFileSendTool`; an ambiguous post-invocation outcome is non-error structured content `{ kind: 'deliveryUnknown', retryable: false }`) + `send_messages_to_user` (agent→Telegram per-message delivery: each `messages[]` item its OWN message, never merged, separate `registerMessageSendTool` → `deps.sendMessagesToThread`; an item is a plain string OR `{text?, path?, as_file?}` — a `path` item routes through `deps.sendFilesToThread` as a single-file attachment with `text`→caption, `dir`-scope passes `authorizedWorkDir`, and a `deliveryUnknown` relays as the same non-error structured content; capped at `maxDiscreteMessages`, total-failure → error), HMAC bearer tokens scoped `thread:`/`dir:`. Because MCP cancellation is a separate HTTP notification while each transport is fresh, the HTTP server correlates by verified token + validated bounded client id + typed request id (verified-token fallback for legacy registrations), retains a bounded 30-second cancellation-before-registration tombstone set, and combines that controller with the SDK handler signal. Reports a short connect-time `instructions` (`mcpServerInstructions`, returned in the MCP `initialize` handshake) — a use-case pointer (when to reach for the server, what it can do); per-tool argument recipes stay in each tool's own `description`. NOTE: connect-time `instructions` + tool descriptions are cached by the client at connect — an already-running agent won't see edits until it reconnects; only tool RESULTS reflect live server code |
 | `scheduler/injection.ts` | Builders for injecting the bot's MCP entry into sessions: Claude `--mcp-config` object, OpenCode `POST /mcp` registration, each with a fresh UUID client header for cancellation isolation; inert until configured |
 | `scheduler/runLedger.ts` | Append-only JSONL run history (`DATA_DIR/scheduler-runs.jsonl`, 10MB→.1 rotation) |
 | `scheduler/directoryThreads.ts` | Inversion: directory → thread keys bound to it (the MCP `dir:` scope resolution). Matches each binding's CANONICAL workDir via `resolveBoundWorkDir`, so it touches the filesystem (`realpathSync`) and can throw — NOT a pure helper |
@@ -633,17 +636,88 @@ OpenCode events / bindings).
     General → a hint that `/new` works inside a bound topic. It no longer creates
     a forum topic (that behavior was removed).
   - `/compact` is **bot-owned** with PER-BACKEND behaviour (pure three-way
-    decision `getCompactCommandRoute` in `utils/compactCommandRoute.ts`):
+    decision `getCompactCommandRoute` in `utils/compactCommandRoute.ts`, keyed on
+    whether the adapter implements `compactContext`):
     **OpenCode** → the adapter's `compactContext` (`POST
     /session/:id/summarize`, directory-scoped, body carries the resolved
-    `providerID`+`modelID`, no `auto` — manual compaction); **terminal** → "not
-    supported" (a shell has no context, and the text would just run as a bogus
-    command); **both Claude backends** → the literal `/compact` is forwarded
-    verbatim as before (their TUI/CLI parses it natively). It used to be
-    un-owned and forwarded for EVERY backend, which silently no-op'd on
-    OpenCode: `prompt_async` does no slash-command parsing, so the model
-    answered the two-word prompt and burned a whole turn without compacting.
+    `providerID`+`modelID`, no `auto` — manual compaction); **json-stream Claude**
+    (the DEFAULT Claude backend) → ALSO `compactContext` now: it sends `/compact`
+    as a stream-json user turn, suppresses that turn's own output, and awaits the
+    CLI's `compact_boundary` / `compact_status` frame to CONFIRM the compaction,
+    then the bot posts a visible confirmation (F3 — previously the literal
+    `/compact` reached the model as a normal prompt and the user saw nothing
+    happen); **tmux Claude** → the literal `/compact` is still forwarded verbatim
+    (its TUI parses it natively — intact by design); **terminal** → "not
+    supported" (a shell has no context). `compactContext(key, instruction?)` takes
+    an optional instruction that APPENDS to the backend's baked compaction prompt
+    (F2's closing section); the tmux backend gets it as `/compact <instruction>`.
     Automatic (overflow-triggered) compaction is server-side and untouched.
+    **D3 — summary content (EVERY bot-issued compaction, both backends):** the
+    summary must be maximally complete (nothing load-bearing dropped) yet capture
+    ONLY session-specific nuances (the user's in-session directives + deviations),
+    never restating the standard auto-loaded rulebook (CLAUDE.md/AGENTS.md/rules),
+    which reloads on the fresh session. Delivery is per-backend
+    (`getCompactionInstruction` + pure `buildCompactionInstruction`): OpenCode BAKES
+    it into the fork's compaction prompt (`packages/core/src/session/compaction.ts`
+    `SUMMARY_TEMPLATE` — so it also reaches the auto/overflow compaction the bot
+    can't touch), so the bot does NOT re-append it there; the Claude backends have
+    no bot-controlled prompt, so it rides the `/compact <instruction>` every time.
+    The wording is kept consistent across both (`compactionSummaryGuidance` mirrors
+    the fork's baked bullets).
+  - **`/compact_on_idle` — auto-compaction after ~55 min idle** (F2). A per-topic
+    idle watchdog (`noteThreadActivity` reset points: user prompt / any command /
+    agent output; timer `idleCompactMs = 55min`, chosen to land inside the ~1h
+    Anthropic extended prompt-cache window so the compaction reads a still-warm
+    cached prefix cheaply) auto-compacts once the session sits idle. Fire guard
+    (pure `checkShouldFireIdleCompaction` in `utils/compactOnIdle.ts`): enabled +
+    session active + not busy for a REAL running turn (`checkIsBusyForRealTurn` =
+    `checkIsBusy && !hasPendingQuestion` — a pending question is NOT a blocker, see
+    D1 below) + the user-latch NOT spent (D2) + ≥1 completed turn since the last
+    compaction. **No reschedule** (D2): a miss just waits — a real running turn's
+    output resets the timer, everything else re-arms only on the next genuine USER
+    message. **The feature's own notice is sent via `replyToThread`, NOT the
+    agent-output path, so it can't re-arm the watchdog into a loop.** After
+    compacting, the bot posts ONE non-pinned notice (`compactOnIdle.notice`) + the
+    appended "Where we stopped" closing section, if any — lifted from the
+    freshly-generated summary via `adapter.getLatestCompactionSummary` + the pure
+    `extractCompactionClosingSection` (sentinel markers `<<<WHERE_WE_STOPPED>>>` /
+    `<<<END_WHERE_WE_STOPPED>>>`, backend-agnostic since OpenCode's markdown template
+    and Claude's freeform summary differ). The closing section is baked into the
+    summary itself via the per-locale `compact.closingSectionInstruction` (English +
+    a baked "IN <language>" directive, like the `schedule.*` templates) passed as the
+    compaction instruction. The command: regular topic → per-thread override;
+    **General topic** (`checkIsGeneral`) → the instance-wide default. Bare → an
+    Enable/Disable inline picker (✓ on current) with the "run in General for ALL
+    topics" hint. Default ON. Persisted like `/trace` (state `compactOnIdleEnabled`
+    global default-on stored explicitly incl. `false`; `compactOnIdleOverrides`
+    per-thread map), lifecycle-independent. Terminal / unbound / no-session topic →
+    the `compactOnIdle.unsupported` reply.
+    - **D1 — pending question at idle → reject + compact + re-ask.** If a question
+      is pending when the watchdog fires, the bot REJECTS it server-side to unblock
+      the turn (`adapter.rejectQuestion` + `sendSignal('SIGINT')`, reusing each
+      backend's abort-error swallow so no bogus "Aborted"/"API error" leaks), drops
+      the stale bot-side pending state + its buttons, compacts, then RE-ASKS the saved
+      question at the END of the notice with REAL inline buttons (`reask_<idx>`). A
+      tap forwards that option's label as a FRESH prompt to the now-compacted session
+      (`reAskedQuestionOptions` map; the original request is gone, so it is NOT
+      answered). On a compaction failure the question is still re-asked (no notice).
+      This SUPERSEDES the earlier "reschedule while a question is pending".
+    - **D2 — idle user-latch (fire at most once per user-active period).** A
+      per-thread LATCH persisted in `state.json` (`compactIdleLatchedThreads`, `/trace`
+      shape): set the instant a fire is decided (BEFORE any output), cleared ONLY by a
+      genuine USER message (text/voice/file via `noteThreadUserActivity`, or a fresh
+      session start). Agent output resets the TIMER but never the latch. The persisted
+      latch is the restart guard — `noteThreadActivity` (which reattach calls) re-arms
+      the timer only when the latch is not spent, so a bot restart can't re-fire.
+  - **`compact_conversation` MCP tool** (F1, on the bot-owned `telegramBot` server,
+    thread-scoped, injected into every session): the agent calls it ONLY when the
+    user explicitly asks to compact/shrink the conversation. It ARMS compaction and
+    returns immediately ("will run when this turn finishes") — it never compacts
+    mid-turn; a per-thread poll (`armDeferredCompaction`) waits for `!checkIsBusy`,
+    then runs the same `runThreadCompaction(key, {withClosingSection:false})` seam
+    the idle path uses (no closing section — the user is present). `runThreadCompaction`
+    (`bot.ts`) is the single execution seam shared by F1 + F2, wrapping the
+    `getCompactCommandRoute` decision.
   - `/clear_messages` (formerly `/clear`) deletes this thread's Telegram
     messages (up to 48h, Telegram limit). The bare `/clear` is **no longer
     bot-owned** — it's forwarded verbatim to the agent (Claude
@@ -700,7 +774,7 @@ OpenCode events / bindings).
     normal welcome stack. Invalid name → error, mode stays armed for retry.
     Any command exits the mode. `/bind <subdir>` direct form is unchanged.
 - **Agent control (proxied):** `/model`, `/connect`, `/disconnect`, `/effort`,
-  `/verbosity`, `/thinking`,
+  `/verbosity`, `/thinking`, `/compact_on_idle`,
   `/tool_results`, `/subagent`, `/output`, `/schedule`, `/claude_mode`, and raw TUI
   keys `/c`, `/y`, `/n`, `/enter`, `/up`, `/down`, `/tab`, `/esc` (`/escape`)
   - `/claude_mode [json|tmux]` switches THIS topic's Claude Code backend between

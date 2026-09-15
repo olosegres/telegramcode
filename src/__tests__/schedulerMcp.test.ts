@@ -156,6 +156,7 @@ describe('createSchedulerMcpServer port binding', () => {
       getThreadAdapterName: () => 'claude',
       sendFilesToThread: async () => ({ ok: true, summary: 'unused' }),
       sendMessagesToThread: async () => ({ ok: true, summary: 'unused' }),
+      compactConversation: () => ({ ok: true, message: 'unused' }),
       getSecret: async () => secret,
       port: takenPort,
     };
@@ -761,6 +762,7 @@ describe('scheduler MCP server end-to-end (real HTTP)', () => {
       getThreadAdapterName: () => 'claude',
       sendFilesToThread,
       sendMessagesToThread,
+      compactConversation: () => ({ ok: true, message: 'unused' }),
       getSecret: async () => secret,
       port: 0,
     };

@@ -747,16 +747,36 @@ export interface AgentAdapter extends EventEmitter {
    * Compact (summarize) the CURRENT live session's context so the conversation
    * can keep going in a smaller window. Same convention as
    * {@link renameSession}: resolves to `null` on success, or a short
-   * user-facing error string on failure.
+   * user-facing error string on failure. Awaits the compaction to actually
+   * COMPLETE before resolving (OpenCode's summarize blocks until the summary is
+   * generated; the json-stream backend waits for the CLI's `compact_boundary`),
+   * so the caller can post its notice AFTER the context was really compacted.
+   *
+   * `instruction`, when set, is appended to the backend's baked compaction
+   * prompt (NOT a replacement) so the summary can carry an extra closing
+   * section (F2's "where we stopped" recap). OpenCode threads it into the
+   * summarize request body; the json-stream Claude backend sends it as
+   * `/compact <instruction>`.
    *
    * Optional (optional-method pattern, like {@link renameSession}): only
-   * backends that expose a server-side compaction ENDPOINT implement it.
-   * OpenCode does (`POST /session/:id/summarize`). Claude deliberately does
-   * NOT — its TUI owns `/compact` itself, so the bot forwards the literal slash
-   * command to it instead of calling an API. Adapters with neither (Terminal)
-   * get the "not supported" reply.
+   * backends that can perform a REAL, confirmable compaction implement it —
+   * OpenCode (`POST /session/:id/summarize`) and the json-stream Claude backend
+   * (`/compact` over the stream-json control turn). The tmux Claude backend
+   * deliberately does NOT: its TUI owns `/compact`, so the bot forwards the
+   * literal slash command to it instead. Adapters with neither (Terminal) get
+   * the "not supported" reply.
    */
-  compactContext?(key: ThreadKey): Promise<string | null>;
+  compactContext?(key: ThreadKey, instruction?: string): Promise<string | null>;
+
+  /**
+   * Read the most recent compaction summary text for the live session, or
+   * `null` when none is available / the read failed. Used by F2 to lift the
+   * appended "Where we stopped" closing section out of the freshly-generated
+   * summary and surface it in the idle-compaction notice. Optional — only
+   * backends whose summary is retrievable implement it; a missing method just
+   * means the notice omits the closing prose.
+   */
+  getLatestCompactionSummary?(key: ThreadKey): Promise<string | null>;
 
   /**
    * Resume an existing backend session under this `key` and `workDir`.

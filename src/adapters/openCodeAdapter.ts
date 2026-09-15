@@ -519,6 +519,10 @@ interface OpenCodeMessageInfo {
   role?: string;
   finish?: string;
   error?: unknown;
+  /** True on the assistant message that stores a compaction summary (`summary:true`
+   *  in the fork). Used by {@link getLatestOpenCodeCompactionSummary} to lift the
+   *  freshly-generated summary out for F2's closing-section notice. */
+  summary?: boolean;
   modelID?: string;
   providerID?: string;
   tokens?: OpenCodeContextUsage;
@@ -650,6 +654,30 @@ export function getLatestOpenCodeAssistantMessageId(records: unknown): string | 
     if (info?.role === 'assistant' && typeof info.id === 'string') latestId = info.id;
   }
   return latestId;
+}
+
+/**
+ * @description Text of the NEWEST compaction summary in a `GET /session/:id/message`
+ * payload — the assistant message the fork stored with `info.summary === true`.
+ * Joins its renderable text parts (same rule as {@link mapOpenCodeMessagesToTurns}).
+ * Pure + exported (no I/O) so it is unit-testable. Returns `null` for a non-array
+ * payload or when no summary message with text is present, so F2's notice omits
+ * the closing block rather than posting an empty one.
+ */
+export function getLatestOpenCodeCompactionSummary(records: unknown): string | null {
+  if (!Array.isArray(records)) return null;
+  let summaryText: string | null = null;
+  for (const record of records) {
+    if (!record || typeof record !== 'object') continue;
+    const { info, parts } = record as OpenCodeMessageRecord;
+    if (info?.role !== 'assistant' || info.summary !== true || !Array.isArray(parts)) continue;
+    const chunks: string[] = [];
+    for (const part of parts) {
+      if (checkIsRenderableTextPart(part)) chunks.push(part.text.trim());
+    }
+    if (chunks.length > 0) summaryText = chunks.join('\n\n');
+  }
+  return summaryText;
 }
 
 /**
@@ -2702,18 +2730,26 @@ export class OpenCodeAdapter extends EventEmitter implements AgentAdapter {
    * defaults the flag to false (the automatic, overflow-triggered compaction is
    * server-side and untouched by this).
    */
-  async compactContext(key: ThreadKey): Promise<string | null> {
+  async compactContext(key: ThreadKey, instruction?: string): Promise<string | null> {
     const session = this.sessions.get(keyToString(key));
     if (!session?.isActive) return t('compact.start_agent_first');
 
     const modelRef = session.modelOverride ?? (await this.getProspectiveModelRef(key));
     if (!modelRef) return t('compact.model_unresolved');
 
+    // The fork's summarize endpoint appends `instruction` to its baked
+    // compaction prompt (F2/S6) — only send it when non-empty so an ordinary
+    // `/compact` stays byte-identical to before.
+    const trimmedInstruction = instruction?.trim();
     try {
       await this.apiRequest(
         'POST',
         buildDirectoryScopedPath(`/session/${session.sessionId}/summarize`, session.workDir),
-        { providerID: modelRef.providerID, modelID: modelRef.modelID },
+        {
+          providerID: modelRef.providerID,
+          modelID: modelRef.modelID,
+          ...(trimmedInstruction ? { instruction: trimmedInstruction } : {}),
+        },
       );
       console.log(
         `[OpenCode] Compacting session ${session.sessionId} with ${modelRef.providerID}/${modelRef.modelID}`,
@@ -2723,6 +2759,28 @@ export class OpenCodeAdapter extends EventEmitter implements AgentAdapter {
       const reason = e instanceof Error ? e.message : String(e);
       console.warn(`[OpenCode] context compaction failed:`, reason);
       return t('compact.failed', { reason });
+    }
+  }
+
+  /**
+   * @description Read the newest compaction summary for the live session via
+   * `GET /session/:id/message` (directory-scoped) and lift its text out with the
+   * pure {@link getLatestOpenCodeCompactionSummary}. Used by F2 to surface the
+   * appended "Where we stopped" closing section in the idle-compaction notice. A
+   * read failure / no summary yields `null` (the notice then omits the block).
+   */
+  async getLatestCompactionSummary(key: ThreadKey): Promise<string | null> {
+    const session = this.sessions.get(keyToString(key));
+    if (!session?.isActive) return null;
+    try {
+      const records = await this.apiRequest<unknown>(
+        'GET',
+        buildDirectoryScopedPath(`/session/${session.sessionId}/message`, session.workDir),
+      );
+      return getLatestOpenCodeCompactionSummary(records);
+    } catch (e) {
+      console.warn(`[OpenCode] reading compaction summary failed:`, e instanceof Error ? e.message : e);
+      return null;
     }
   }
 

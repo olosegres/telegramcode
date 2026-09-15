@@ -76,6 +76,7 @@ export const deDict: Record<string, string> = {
     '/verbosity — Ausgabedetaillierung (Thinking/Tools/Sub-Agenten)\n' +
     '/quit /status /output — Steuerung\n' +
     '/compact — Agent-Kontext komprimieren\n' +
+    '/compact_on_idle — bei Leerlauf automatisch komprimieren (Umschalter)\n' +
     '/clear — Thread-Nachrichten löschen\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI-Tasten (Claude)\n' +
     '/bind — Verknüpfung verwalten',
@@ -304,6 +305,19 @@ export const deDict: Record<string, string> = {
   'compact.unsupported_backend': 'Kontext-Komprimierung wird für {label} nicht unterstützt.',
   'compact.model_unresolved': '⚠️ Komprimieren nicht möglich: für diese Session ist kein Modell ermittelt. Wähle eines mit /model und versuche es erneut.',
   'compact.failed': '⚠️ Session-Kontext konnte nicht komprimiert werden: {reason}',
+  'compact.busy': '⚠️ Der Agent ist gerade beschäftigt — führe /compact erneut aus, sobald der aktuelle Vorgang fertig ist.',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN GERMAN: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 Bei Leerlauf automatisch komprimiert, um Tokens über den Cache zu sparen.\nFühre /compact_on_idle aus, um das abzuschalten.',
+  'compactOnIdle.on': 'AN',
+  'compactOnIdle.off': 'AUS',
+  'compactOnIdle.title': '🧹 Auto-Komprimierung bei Leerlauf für dieses Thema: {state}\n\nWenn die Sitzung ~55 Min. untätig ist, wird ihr Kontext automatisch komprimiert, um Tokens zu sparen (der Prompt-Cache ist noch warm).\n\nUm es für ALLE Themen auf einmal umzuschalten, führe dies im General-Thema aus.',
+  'compactOnIdle.titleGeneral': '🧹 Auto-Komprimierung bei Leerlauf — Standard für ALLE Themen: {state}\n\nWenn eine Sitzung ~55 Min. untätig ist, wird ihr Kontext automatisch komprimiert, um Tokens zu sparen.\n\nJedes Thema kann dies mit seinem eigenen /compact_on_idle überschreiben.',
+  'compactOnIdle.enableButton': 'Aktivieren',
+  'compactOnIdle.disableButton': 'Deaktivieren',
+  'compactOnIdle.setThisTopic': '✅ Auto-Komprimierung bei Leerlauf: {state} für dieses Thema.',
+  'compactOnIdle.setGlobal': '✅ Auto-Komprimierung bei Leerlauf: {state} für ALLE Themen (themenspezifische Überschreibungen gelten weiterhin).',
+  'compactOnIdle.unsupported': 'Auto-Komprimierung bei Leerlauf gilt für eine aktive Agent-Sitzung. Starte zuerst /claude oder /opencode in einem gebundenen Thema.',
+  'compactOnIdle.pendingQuestionReask': '❓ Du hast noch eine offene Frage. Tippe auf eine Option, um sie zu beantworten und fortzufahren:',
 
   'connect.prompt_key': '🔑 Sende den API-Key für `{provider}` als nächste Nachricht. Ich lösche die Key-Nachricht aus dem Verlauf.',
   'connect.empty_key': '❌ API-Key ist leer. Sende den Key als nächste Nachricht.',

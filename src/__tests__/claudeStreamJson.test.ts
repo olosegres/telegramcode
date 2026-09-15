@@ -242,3 +242,50 @@ describe('buildCanUseToolAllow / buildCanUseToolDeny — control_response bodies
     assert.equal((res as { toolUseID?: string }).toolUseID, 'toolu_z');
   });
 });
+
+describe('compaction frames — /compact outcome (F3)', () => {
+  // Fixtures captured from a live `/compact` over stream-json (v2.1.214).
+  it('classifies a successful compact_status frame', () => {
+    const actions = classify({
+      type: 'system',
+      subtype: 'status',
+      status: null,
+      compact_result: 'success',
+      session_id: 's',
+      uuid: 'u',
+    });
+    assert.deepEqual(actions, [{ kind: 'compactStatus', result: 'success', error: null }]);
+  });
+
+  it('classifies a failing compact_status frame (not enough messages)', () => {
+    const actions = classify({
+      type: 'system',
+      subtype: 'status',
+      status: null,
+      compact_result: 'error',
+      compact_error: 'Not enough messages to compact.',
+      session_id: 's',
+      uuid: 'u',
+    });
+    assert.deepEqual(actions, [
+      { kind: 'compactStatus', result: 'error', error: 'Not enough messages to compact.' },
+    ]);
+  });
+
+  it('classifies the compact_boundary with pre/post token counts', () => {
+    const actions = classify({
+      type: 'system',
+      subtype: 'compact_boundary',
+      session_id: 's',
+      uuid: 'u',
+      compact_metadata: { trigger: 'manual', pre_tokens: 33210, post_tokens: 5625 },
+    });
+    assert.deepEqual(actions, [
+      { kind: 'compactBoundary', trigger: 'manual', preTokens: 33210, postTokens: 5625 },
+    ]);
+  });
+
+  it('a plain status frame (no compact fields) is ignored', () => {
+    assert.deepEqual(classify({ type: 'system', subtype: 'status', status: 'compacting' }), []);
+  });
+});

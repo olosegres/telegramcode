@@ -76,6 +76,7 @@ export const jaDict: Record<string, string> = {
     '/verbosity — 出力の詳細度（thinking/tools/サブエージェント）\n' +
     '/quit /status /output — 制御\n' +
     '/compact — エージェントのコンテキストを圧縮\n' +
+    '/compact_on_idle — アイドル後に自動圧縮（切り替え）\n' +
     '/clear — スレッドのメッセージを削除\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI キー（Claude）\n' +
     '/bind — バインドを管理',
@@ -304,6 +305,19 @@ export const jaDict: Record<string, string> = {
   'compact.unsupported_backend': '{label} ではコンテキストの圧縮はサポートされていません。',
   'compact.model_unresolved': '⚠️ 圧縮できません: このセッションのモデルが解決できません。/model で選択してから再試行してください。',
   'compact.failed': '⚠️ セッションのコンテキスト圧縮に失敗: {reason}',
+  'compact.busy': '⚠️ エージェントは処理中です。現在のターンが終わってから /compact を再実行してください。',
+  'compact.closingSectionInstruction': 'After the summary, append a final section wrapped EXACTLY between a line containing only {startMarker} and a line containing only {endMarker}. Inside that section, write IN JAPANESE: (1) one or two terse sentences on what we were doing and the immediate next step; (2) if you asked the user a question that is still unanswered, restate that question and list its answer options. Write nothing after {endMarker}.',
+  'compactOnIdle.notice': '🧹 アイドル時に自動圧縮しました（キャッシュ活用でトークン節約）。\n無効にするには /compact_on_idle を実行してください。',
+  'compactOnIdle.on': 'オン',
+  'compactOnIdle.off': 'オフ',
+  'compactOnIdle.title': '🧹 このトピックのアイドル自動圧縮：{state}\n\nセッションが約55分アイドルになると、トークン節約のためコンテキストが自動圧縮されます（プロンプトキャッシュはまだ温かい状態）。\n\nすべてのトピックを一度に切り替えるには、General トピックでこれを実行してください。',
+  'compactOnIdle.titleGeneral': '🧹 アイドル自動圧縮 — すべてのトピックの既定：{state}\n\nセッションが約55分アイドルになると、トークン節約のためコンテキストが自動圧縮されます。\n\n各トピックは独自の /compact_on_idle で上書きできます。',
+  'compactOnIdle.enableButton': '有効化',
+  'compactOnIdle.disableButton': '無効化',
+  'compactOnIdle.setThisTopic': '✅ アイドル自動圧縮：このトピックで {state}。',
+  'compactOnIdle.setGlobal': '✅ アイドル自動圧縮：すべてのトピックで {state}（トピックごとの上書きは引き続き有効）。',
+  'compactOnIdle.unsupported': 'アイドル自動圧縮はアクティブなエージェントセッションに適用されます。まずバインド済みのトピックで /claude か /opencode を開始してください。',
+  'compactOnIdle.pendingQuestionReask': '❓ 未回答の質問が残っています。オプションをタップして回答し、続行してください：',
 
   'connect.prompt_key': '🔑 次のメッセージで `{provider}` の API key を送信してください。キーを含むメッセージを履歴から削除します。',
   'connect.empty_key': '❌ API key が空です。次のメッセージでキーを送信してください。',
