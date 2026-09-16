@@ -422,6 +422,20 @@ config/variants, not a per-message API field).
   forwarding a bare `/clear`. Topic name comes from `forum_topic_created` /
   `_edited` (persisted on the binding); the group title from an
   in-memory cache fed by authorised updates. Slash commands skip the preamble.
+- **Reply-quote context.** When the operator uses Telegram's REPLY feature on a
+  message in a bound, agent-active topic, the bot folds the replied-to message's
+  content into the forwarded prompt (agent-facing English `[Replying to an
+  earlier message · from: assistant|user]` + `> `-quoted text, placed between the
+  thread-context preamble and the user's prompt — part of the per-message body,
+  like the `/timestamps` line, NOT the once-per-change preamble marker). Content
+  selection is first-non-empty of the manual (highlighted) quote → replied text →
+  caption, capped at `replyQuoteMaxChars` (4000) with a `… [truncated]` marker.
+  It rides the single `forwardPromptToAgent` choke point, so Claude (all
+  backends) and OpenCode get it identically. Pure helpers in
+  `utils/replyQuote.ts` (`extractReplyQuote`, `buildReplyQuoteBlock`); the impure
+  telegraf bridge is `getReplyQuoteBlock` in `bot.ts`. v1 excludes terminal
+  topics (raw shell, bypasses the choke point), forum/service and topic-root
+  messages, no-text replies, and pending-question digit answers.
 - **File intake.** A file sent to a bound, agent-active topic (photo,
   document incl. PDF, video, video_note, audio, animation) is downloaded into
   `DATA_DIR/files/<chatId>_<threadId>/` (bot-owned, never inside the bound
@@ -503,6 +517,7 @@ config/variants, not a per-message API field).
 | `pinnedStatus.ts` | Per-thread pinned status banner (shows model, etc.) |
 | `agentTrigger.ts` | Detect agent-ready / prompt triggers in output |
 | `threadContextPreamble.ts` | Pure helpers: build the `[Telegram thread context]` preamble (`buildThreadContextPreamble`), decide whether to inject it (`checkShouldInjectPreamble`, `checkShouldSkipPreambleForText`), and glue it ahead of the prompt (`prependThreadContextPreamble`) |
+| `utils/replyQuote.ts` | Pure helpers behind the reply-quote context (a Telegram REPLY folds the replied-to message into the forwarded prompt): `extractReplyQuote` (first-non-empty of manual-quote / reply text / caption; `null` for a service, topic-root, or no-text reply) + `buildReplyQuoteBlock` (agent-facing `[Replying to an earlier message · from: assistant\|user]` + `> `-quoted, capped at `replyQuoteMaxChars` 4000). Structural input, no telegraf imports; the impure bridge (`getReplyQuoteBlock`) + the `forwardPromptToAgent` fold live in `bot.ts` |
 | `telegramFileIntake.ts` | Pure file-intake helpers: normalise the six media kinds (`getTelegramFileMeta`, photo = largest size), read the album id (`getMediaGroupId`), build the safe saved filename (`buildSavedFileName`, sanitised), the agent-facing announcements (`buildFilePromptText` single, `buildAlbumPromptText` album), and the size cap check (`checkIsFileTooBig`) |
 | `utils/mediaGroupCollector.ts` | Pure debounced batcher for media albums: `collect(groupKey, item)` re-arms a per-group timer, `onFlush` fires once with items in arrival order; also owns the per-group one-shot hint guard (`checkShouldAnnounceOnce`) so gating/error replies fire once per album |
 | `botFileStorage.ts` | Per-thread intake dir layout + janitor: `resolveThreadFilesDir`, `ensureThreadFilesDir`, `purgeThreadFiles` (on `/clear`), `sweepExpiredThreadFiles` (boot + daily age sweep, `fileRetentionDays = 30`) |

@@ -230,6 +230,7 @@ import {
   checkShouldSkipPreambleForText,
 } from './threadContextPreamble';
 import { getPinnedBannerSkipDecision } from './utils/pinnedBannerSkipDecision';
+import { extractReplyQuote, buildReplyQuoteBlock, type ReplyQuoteSource } from './utils/replyQuote';
 import {
   getTelegramFileMeta,
   getMediaGroupId,
@@ -4522,16 +4523,26 @@ async function forwardPromptToAgent(
   adapter: AgentAdapter,
   text: string,
   sentAtMs?: number,
-  options: { isRecoveryReplay?: boolean } = {},
+  options: { isRecoveryReplay?: boolean; replyContext?: string } = {},
 ): Promise<void> {
   // A forwarded prompt is thread activity — reset the compact-on-idle watchdog (F2).
   noteThreadActivity(key);
-  // Cache the RAW prompt so a wedged OpenCode session can be recovered by
-  // restarting fresh and replaying it. Skip slash commands (not worth replaying)
-  // and the recovery replay itself (keeps the once-per-episode guard intact). A
-  // genuine new prompt also opens a fresh recovery episode (clears the guard).
+  // Fold the reply-quote block (from a Telegram REPLY) ahead of the user's text
+  // so the agent sees WHAT is being referenced — only for a normal prompt, since
+  // a slash command forwarded to the agent is a control token a prefixed block
+  // would corrupt. The folded `body` is what gets cached, preamble-wrapped and
+  // timestamped below.
+  const body =
+    options.replyContext && !checkShouldSkipPreambleForText(text)
+      ? `${options.replyContext}\n\n${text}`
+      : text;
+  // Cache the (reply-folded) prompt so a wedged OpenCode session can be recovered
+  // by restarting fresh and replaying it — replaying WITH the quote is correct.
+  // Skip slash commands (not worth replaying) and the recovery replay itself
+  // (keeps the once-per-episode guard intact). A genuine new prompt also opens a
+  // fresh recovery episode (clears the guard).
   if (!options.isRecoveryReplay && !checkShouldSkipPreambleForText(text)) {
-    lastForwardedPrompt.set(keyToString(key), text);
+    lastForwardedPrompt.set(keyToString(key), body);
     wedgeRecoveryTier.delete(keyToString(key));
   }
   // Glue the thread-context preamble (topic / group / thread / folder) ahead
@@ -4548,7 +4559,7 @@ async function forwardPromptToAgent(
   // (plumbed from the text/voice handlers); prompts with no live message
   // (scheduled runs, buffered replay, api-retry nudge, file intake) fall back
   // to now. Slash commands skip it for the same reason they skip the preamble.
-  let promptText = getPromptWithThreadContext(key, text);
+  let promptText = getPromptWithThreadContext(key, body);
   if (state.checkIsTimestampsEnabled(key) && !checkShouldSkipPreambleForText(text)) {
     promptText = `${formatIsoLocalOffset(sentAtMs ?? Date.now())}\n\n${promptText}`;
   }
@@ -4634,6 +4645,36 @@ function getPromptWithThreadContext(key: ThreadKey, text: string): string {
   }
   threadContextMarkers.set(kStr, preamble);
   return prependThreadContextPreamble(preamble, text);
+}
+
+/**
+ * @description Bridge a telegraf text/voice message to the agent-facing
+ * reply-quote block. When the operator uses Telegram's REPLY feature, this folds
+ * the replied-to message's content into the forwarded prompt so the agent sees
+ * WHAT is being referenced. Returns the block, or `undefined` when there is
+ * nothing to inject (no reply, a forum/service or topic-root message, or a reply
+ * carrying no textual content — the pure {@link extractReplyQuote} decides).
+ *
+ * Union fields are read with the `'x' in msg` idiom (no casts): `text`/`caption`
+ * live only on their specific variants, `forum_topic_created` marks a service
+ * message; `message_id` / `from` / `message_thread_id` are on every variant. The
+ * bot's own id (`bot.botInfo.id`) drives the `from: assistant` attribution.
+ */
+function getReplyQuoteBlock(message: Message.TextMessage | Message.VoiceMessage): string | undefined {
+  const replied = message.reply_to_message;
+  if (!replied) return undefined;
+
+  const botId = bot.botInfo?.id;
+  const source: ReplyQuoteSource = {
+    manualQuoteText: message.quote?.text,
+    replyText: 'text' in replied ? replied.text : undefined,
+    replyCaption: 'caption' in replied ? replied.caption : undefined,
+    replyMessageId: replied.message_id,
+    topicRootId: message.message_thread_id,
+    isServiceMessage: 'forum_topic_created' in replied,
+    fromBot: botId !== undefined && replied.from?.id === botId,
+  };
+  return buildReplyQuoteBlock(extractReplyQuote(source)) ?? undefined;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -8255,9 +8296,11 @@ bot.on(message('text'), async (ctx) => {
   // wedge backstop, and the actual forward. The Claude-selector + terminal
   // branches above already returned for their own cases, so this is reached only
   // for a generic active prompt. The message's real send time (Telegram `date`,
-  // unix seconds) rides along for the `/timestamps` injection.
+  // unix seconds) rides along for the `/timestamps` injection, and a Telegram
+  // REPLY folds the quoted message into the prompt (see `getReplyQuoteBlock`).
   if (adapter.checkIsActive(key)) {
-    await deliverActivePrompt(key, adapter, text, ctx.message.date * 1000);
+    const replyBlock = getReplyQuoteBlock(ctx.message);
+    await deliverActivePrompt(key, adapter, text, ctx.message.date * 1000, replyBlock);
     return;
   }
 
@@ -8307,8 +8350,12 @@ bot.on(message('voice'), async (ctx) => {
   // (processVoiceJob already reports its own errors via replyToThread).
   const fileId = ctx.message.voice.file_id;
   const sentAtMs = ctx.message.date * 1000;
+  // A Telegram REPLY on the voice note folds the quoted message into the prompt.
+  // Compute it HERE (only the handler has `ctx`); the job runs later off the
+  // update loop and only sees `key`/`bot`.
+  const replyBlock = getReplyQuoteBlock(ctx.message);
   void getVoiceTranscriptionQueue(key)
-    .run(() => processVoiceJob(key, fileId, sentAtMs))
+    .run(() => processVoiceJob(key, fileId, sentAtMs, replyBlock))
     .catch((err) => {
       console.error('[Bot] Voice job error (already handled):', err);
     });
@@ -8322,9 +8369,16 @@ bot.on(message('voice'), async (ctx) => {
  * Uses only `key`/`bot`, never the request `ctx`, so it survives past the
  * handler's return. `sentAtMs` is the voice note's real Telegram send time,
  * captured by the handler for the `/timestamps` injection (transcription can
- * take ~20s, so "now" at forward time would drift).
+ * take ~20s, so "now" at forward time would drift). `replyContext` is the
+ * reply-quote block the handler built from `ctx.message` (a Telegram REPLY on
+ * the voice note), plumbed here since the job no longer has `ctx`.
  */
-async function processVoiceJob(key: ThreadKey, fileId: string, sentAtMs?: number): Promise<void> {
+async function processVoiceJob(
+  key: ThreadKey,
+  fileId: string,
+  sentAtMs?: number,
+  replyContext?: string,
+): Promise<void> {
   try {
     // Audit S14 / #33: `getFileLink` builds the bot-token URL in one
     // place inside Telegraf instead of us materialising the token in a
@@ -8419,7 +8473,7 @@ async function processVoiceJob(key: ThreadKey, fileId: string, sentAtMs?: number
     // CANCELS it (a transcript is free-form prose, never a bare digit) and is
     // delivered as a fresh prompt — closing the gap where voice queued behind a
     // blocked question-turn and the user got no reply.
-    await deliverActivePrompt(key, adapter, transcript, sentAtMs);
+    await deliverActivePrompt(key, adapter, transcript, sentAtMs, replyContext);
   } catch (err) {
     console.error('[Bot] Voice handling error:', err);
     await replyToThread(key, 'Error processing voice message');
@@ -9669,6 +9723,7 @@ async function deliverActivePrompt(
   adapter: AgentAdapter,
   text: string,
   sentAtMs?: number,
+  replyContext?: string,
 ): Promise<void> {
   // A genuine USER message (text or voice) — clear the compact-on-idle latch so
   // the next idle period can compact again (D2), whether it answers a pending
@@ -9679,10 +9734,12 @@ async function deliverActivePrompt(
     const currentQuestion = pending.data.questions[pending.currentIndex];
     const route = getQuestionReplyRoute(text, currentQuestion);
     if (route.kind === 'answer') {
+      // Answering a pending question (bare digit) is a pick, not a prompt about
+      // the quote — the reply context is deliberately dropped here.
       await applyQuestionAnswer(key, route.labels);
       return;
     }
-    await cancelPendingQuestionAndForward(key, adapter, text, sentAtMs);
+    await cancelPendingQuestionAndForward(key, adapter, text, sentAtMs, replyContext);
     return;
   }
 
@@ -9710,7 +9767,7 @@ async function deliverActivePrompt(
     adapter.sendSignal(key, 'SIGINT');
     await replyToThread(key, t('agent.question_cancelled_for_prompt'));
   }
-  await forwardPromptToAgent(key, adapter, text, sentAtMs);
+  await forwardPromptToAgent(key, adapter, text, sentAtMs, { replyContext });
 }
 
 /**
@@ -9731,6 +9788,7 @@ async function cancelPendingQuestionAndForward(
   adapter: AgentAdapter,
   text: string,
   sentAtMs?: number,
+  replyContext?: string,
 ): Promise<void> {
   const pending = pendingQuestions.get(keyToString(key));
   const cancelledMessageId = pending?.messageId ?? null;
@@ -9763,7 +9821,7 @@ async function cancelPendingQuestionAndForward(
   if (!didLabelQuestionMessage) {
     await replyToThread(key, t('agent.question_cancelled_for_prompt'));
   }
-  await forwardPromptToAgent(key, adapter, text, sentAtMs);
+  await forwardPromptToAgent(key, adapter, text, sentAtMs, { replyContext });
 }
 
 /**

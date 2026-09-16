@@ -43,12 +43,12 @@ function getProcessVoiceJobBody(): string {
 
 test('S4: processVoiceJob delivers the transcript via the shared deliverActivePrompt choke point', () => {
   const body = getProcessVoiceJobBody();
-  // The trailing `sentAtMs` is the `/timestamps` plumbing (the voice note's
-  // real Telegram send time) — optional in the pattern so the guard keys on
-  // the ROUTE, not the extra argument.
+  // The trailing `sentAtMs` (the `/timestamps` plumbing — the voice note's real
+  // Telegram send time) and `replyContext` (the reply-quote block) are optional
+  // in the pattern so the guard keys on the ROUTE, not the extra arguments.
   assert.match(
     body,
-    /await\s+deliverActivePrompt\(\s*key\s*,\s*adapter\s*,\s*transcript\s*(?:,\s*sentAtMs\s*)?\)/,
+    /await\s+deliverActivePrompt\(\s*key\s*,\s*adapter\s*,\s*transcript\s*(?:,\s*sentAtMs\s*)?(?:,\s*replyContext\s*)?\)/,
     'voice must route the transcript through deliverActivePrompt (the text+voice choke point)',
   );
 });
