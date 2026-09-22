@@ -354,6 +354,7 @@ export const zhDict: Record<string, string> = {
   'voice.no_api_key':
     '语音需要 `GROQ_API_KEY`（免费）或 `OPENAI_API_KEY`。',
   'voice.failed': '语音转录失败。',
+  'voice.retrying': '⚠️ 语音转录失败（{error}）。{seconds} 秒后重试…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

@@ -354,6 +354,7 @@ export const jaDict: Record<string, string> = {
   'voice.no_api_key':
     '音声には `GROQ_API_KEY`（無料）または `OPENAI_API_KEY` が必要です。',
   'voice.failed': '音声メッセージの文字起こしに失敗しました。',
+  'voice.retrying': '⚠️ 音声メッセージの文字起こしに失敗しました（{error}）。{seconds} 秒後に再試行します…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

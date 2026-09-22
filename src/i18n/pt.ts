@@ -354,6 +354,7 @@ export const ptDict: Record<string, string> = {
   'voice.no_api_key':
     'A voz requer `GROQ_API_KEY` (grátis) ou `OPENAI_API_KEY`.',
   'voice.failed': 'Falha ao transcrever a mensagem de voz.',
+  'voice.retrying': '⚠️ Falha ao transcrever a mensagem de voz ({error}). Nova tentativa em {seconds} s…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

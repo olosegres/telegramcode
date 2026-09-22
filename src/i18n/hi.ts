@@ -354,6 +354,7 @@ export const hiDict: Record<string, string> = {
   'voice.no_api_key':
     'वॉइस के लिए `GROQ_API_KEY` (मुफ़्त) या `OPENAI_API_KEY` चाहिए।',
   'voice.failed': 'वॉइस संदेश ट्रांसक्राइब करने में विफल।',
+  'voice.retrying': '⚠️ वॉइस संदेश ट्रांसक्राइब करने में विफल ({error})। {seconds} सेकंड में फिर से कोशिश की जाएगी…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

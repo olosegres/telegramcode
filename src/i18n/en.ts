@@ -366,6 +366,7 @@ export const enDict: Record<string, string> = {
   'voice.no_api_key':
     'Voice requires `GROQ_API_KEY` (free) or `OPENAI_API_KEY`.',
   'voice.failed': 'Failed to transcribe voice message.',
+  'voice.retrying': '⚠️ Failed to transcribe voice message ({error}). Retrying in {seconds} s…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

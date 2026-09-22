@@ -354,6 +354,7 @@ export const frDict: Record<string, string> = {
   'voice.no_api_key':
     'La voix nécessite `GROQ_API_KEY` (gratuit) ou `OPENAI_API_KEY`.',
   'voice.failed': 'Échec de la transcription du message vocal.',
+  'voice.retrying': '⚠️ Échec de la transcription du message vocal ({error}). Nouvel essai dans {seconds} s…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

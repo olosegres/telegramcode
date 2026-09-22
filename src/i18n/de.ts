@@ -354,6 +354,7 @@ export const deDict: Record<string, string> = {
   'voice.no_api_key':
     'Sprache erfordert `GROQ_API_KEY` (kostenlos) oder `OPENAI_API_KEY`.',
   'voice.failed': 'Sprachnachricht konnte nicht transkribiert werden.',
+  'voice.retrying': '⚠️ Sprachnachricht konnte nicht transkribiert werden ({error}). Neuer Versuch in {seconds} s…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

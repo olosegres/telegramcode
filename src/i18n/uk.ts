@@ -360,6 +360,7 @@ export const ukDict: Record<string, string> = {
   'voice.no_api_key':
     'Для голосу потрібен `GROQ_API_KEY` (безкоштовно) або `OPENAI_API_KEY`.',
   'voice.failed': 'Не вдалося розпізнати голосове повідомлення.',
+  'voice.retrying': '⚠️ Не вдалося розпізнати голосове повідомлення ({error}). Повторю через {seconds} с…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

@@ -331,7 +331,9 @@ In a bound topic you can also type:
 - A plain message after `/claude` is already running → routed as input.
 
 Voice messages are transcribed via Groq Whisper (free) or OpenAI Whisper
-(fallback) and follow the same routing.
+(fallback) and follow the same routing. If the provider times out or fails
+temporarily, the bot says so in the topic and retries automatically (after 5 s,
+then 15 s) — no need to re-record the voice note.
 
 `/terminal` is never started from a natural-language phrase — only the
 explicit command opens a shell.

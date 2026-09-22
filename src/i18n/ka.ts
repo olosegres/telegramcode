@@ -354,6 +354,7 @@ export const kaDict: Record<string, string> = {
   'voice.no_api_key':
     'ხმისთვის სჭირდება `GROQ_API_KEY` (უფასო) ან `OPENAI_API_KEY`.',
   'voice.failed': 'ხმოვანი შეტყობინების ტრანსკრიფცია ვერ მოხერხდა.',
+  'voice.retrying': '⚠️ ხმოვანი შეტყობინების ტრანსკრიფცია ვერ მოხერხდა ({error}). ხელახლა ვცდი {seconds} წამში…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

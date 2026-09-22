@@ -354,6 +354,7 @@ export const esDict: Record<string, string> = {
   'voice.no_api_key':
     'La voz requiere `GROQ_API_KEY` (gratis) o `OPENAI_API_KEY`.',
   'voice.failed': 'Error al transcribir el mensaje de voz.',
+  'voice.retrying': '⚠️ Error al transcribir el mensaje de voz ({error}). Reintento en {seconds} s…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

@@ -250,11 +250,12 @@ config/variants, not a per-message API field).
   429-retry + rate-summary kept, but NO pacer permit and NO per-thread FIFO):
   the typing indicator (`sendChatAction` is not a message → not subject to the
   message flood limit, yet it was eating ~60% of the paced budget) and the
-  voice-transcript 🎤 echo (`replyToThread` opt-in `unpaced` flag, sole caller —
-  the user's own input ack must not queue behind agent output; was up to 182s
-  late under load, now sub-second). Agent output NEVER goes unpaced — this is
-  not a priority class inside the pacer, it is a small closed set of rare
-  non-output sends moved out of it (plan
+  voice-path acks (`replyToThread` opt-in `unpaced` flag): the transcript 🎤
+  echo — the user's own input ack must not queue behind agent output; was up to
+  182s late under load, now sub-second — and the `voice.retrying` notice that
+  precedes it (paced, it could land AFTER the retry's echo). Agent output NEVER
+  goes unpaced — this is not a priority class inside the pacer, it is a small
+  closed set of rare non-output sends moved out of it (plan
   `agent/tasks/completed/2026-07-05-unpace-typing-and-priority-acks.md`).
 - **Output transport seam (CHAT_MODE-selected).** HOW agent output reaches a topic
   is chosen ONCE at boot by `CHAT_MODE` via `createOutputTransport` (`src/output/`),
@@ -520,6 +521,7 @@ config/variants, not a per-message API field).
 | `utils/replyQuote.ts` | Pure helpers behind the reply-quote context (a Telegram REPLY folds the replied-to message into the forwarded prompt): `extractReplyQuote` (first-non-empty of manual-quote / reply text / caption; `null` for a service, topic-root, or no-text reply) + `buildReplyQuoteBlock` (agent-facing `[Replying to an earlier message · from: assistant\|user]` + `> `-quoted, capped at `replyQuoteMaxChars` 4000). Structural input, no telegraf imports; the impure bridge (`getReplyQuoteBlock`) + the `forwardPromptToAgent` fold live in `bot.ts` |
 | `telegramFileIntake.ts` | Pure file-intake helpers: normalise the six media kinds (`getTelegramFileMeta`, photo = largest size), read the album id (`getMediaGroupId`), build the safe saved filename (`buildSavedFileName`, sanitised), the agent-facing announcements (`buildFilePromptText` single, `buildAlbumPromptText` album), and the size cap check (`checkIsFileTooBig`) |
 | `utils/mediaGroupCollector.ts` | Pure debounced batcher for media albums: `collect(groupKey, item)` re-arms a per-group timer, `onFlush` fires once with items in arrival order; also owns the per-group one-shot hint guard (`checkShouldAnnounceOnce`) so gating/error replies fire once per album |
+| `utils/transcribeAudio.ts` | Voice-note transcription against a Whisper-compatible API (`getTranscriptionEndpoint`: Groq when `GROQ_API_KEY` is set, else OpenAI). `transcribeAudio` retries a transient failure (timeout / network error / 408 / 409 / 5xx / 429) after `transcribeRetryDelaysMs` = 5 s then 15 s (a 429 waits at least its `Retry-After`) and fails a permanent one (other 4xx, empty download) at once; `onRetry` fires before each pause. `bot.ts`'s `transcribeVoiceFile` wires it to the unpaced `voice.retrying` topic notice ("… retrying in N s") and the final `voice.failed`. Pre-retry, a single Groq stall (the provider normally answers in <1 s) lost the voice note |
 | `botFileStorage.ts` | Per-thread intake dir layout + janitor: `resolveThreadFilesDir`, `ensureThreadFilesDir`, `purgeThreadFiles` (on `/clear`), `sweepExpiredThreadFiles` (boot + daily age sweep, `fileRetentionDays = 30`) |
 | `sendErrorClassifier.ts` | Classify Telegram send failures |
 | `utils/linkPreviewSuppression.ts` | Default every outgoing text `sendMessage`/`editMessageText` to NO link preview (`link_preview_options.is_disabled`), injected at the shared `callApi` choke point (installed right after `installCallApiTrace`, sits outside it so the trace records what is sent). A caller that sets its own `link_preview_options` / `disable_web_page_preview` wins; media methods are untouched. Reason: a bare URL in agent output otherwise expanded a large preview card, one per message, in the muted topic |

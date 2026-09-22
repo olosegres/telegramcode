@@ -354,6 +354,7 @@ export const uzDict: Record<string, string> = {
   'voice.no_api_key':
     'Ovoz uchun `GROQ_API_KEY` (bepul) yoki `OPENAI_API_KEY` kerak.',
   'voice.failed': 'Ovoz xabarini transkripsiya qilib bo‘lmadi.',
+  'voice.retrying': '⚠️ Ovoz xabarini transkripsiya qilib bo‘lmadi ({error}). {seconds} soniyadan keyin qayta urinaman…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':

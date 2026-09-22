@@ -148,6 +148,17 @@ test('agent.ready carries the {infoBlock} placeholder in every locale', () => {
   }
 });
 
+test('voice.retrying names the error and the pause in every locale', () => {
+  // The notice must tell the user a retry is coming AND when; a locale that lost
+  // {seconds} would announce a retry with no delay, one that lost {error} no cause.
+  for (const locale of localeCodes) {
+    const out = runWithLocale(locale, () => t('voice.retrying', { error: 'transcription timed out', seconds: 15 }));
+    assert.ok(out.includes('transcription timed out'), `expected the error in ${locale}: "${out}"`);
+    assert.ok(out.includes('15'), `expected the seconds in ${locale}: "${out}"`);
+    assert.ok(!out.includes('{'), `placeholder not substituted in ${locale}: "${out}"`);
+  }
+});
+
 test('agent.ready substitutes an empty {infoBlock} away entirely', () => {
   const out = t('agent.ready', { label: 'OpenCode', subdir: 'myProject', argsSuffix: '', infoBlock: '' });
   assert.ok(!out.includes('{infoBlock}'), `placeholder not substituted: "${out}"`);

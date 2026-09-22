@@ -358,6 +358,7 @@ export const ruDict: Record<string, string> = {
   'voice.no_api_key':
     'Для голоса нужен `GROQ_API_KEY` (бесплатно) или `OPENAI_API_KEY`.',
   'voice.failed': 'Не удалось распознать голосовое.',
+  'voice.retrying': '⚠️ Не удалось распознать голосовое ({error}). Повторю через {seconds} с…',
   'voice.transcribed': '🎤 {text}',
 
   'file.too_big':
