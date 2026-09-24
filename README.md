@@ -28,6 +28,7 @@ setup, no extra dashboards — direct access to your own **OpenCode** /
 - **Time-aware prompts** — `/timestamps on` prepends each forwarded prompt's send time (local-offset ISO), so a days-long session knows what "yesterday" or "2 days ago" means; agent-facing only, per topic
 - **Reply context** — reply to a message in a topic and the quoted text is folded into the prompt the agent receives, so it sees what you point at without re-pasting; works for text and voice, both agents
 - **Your timezone** — `/timezone Europe/Moscow` once, and schedules fire at your wall-clock time while the agent is told what time it actually is; no server-clock guessing
+- **Waits out usage limits** — when the agent hits a usage / session limit the bot reads the reset time out of the error (honouring the timezone the provider quotes), waits, then tells the agent to continue by itself and pins the "work resumed" message so a muted topic still notifies you; `/auto_continue_limits` turns it off per topic or skips a single resume
 
 ## Two surfaces: group topics, bot DM, or both
 
@@ -297,6 +298,7 @@ actually start an agent or terminal in the folder.
 | `/clear` | Forwarded to the agent (Claude wipes context; OpenCode plain text) — not a bot command anymore. Also purges the topic's file-intake dir |
 | `/compact` | Compact the agent's context — a real, confirmed compaction on OpenCode and on the default (stream) Claude backend; the tmux Claude backend has the literal command forwarded (its TUI compacts); terminal: not supported |
 | `/compact_on_idle` | Toggle auto-compaction after ~55 min idle (Enable/Disable picker). Per topic; run it in **General** to set the default for all topics. On by default. The bot posts a short notice + a "where we stopped" recap after each idle compaction. Fires at most once per active period (until you write again); if a question was pending it is re-asked with tappable buttons after the compaction |
+| `/auto_continue_limits` | Toggle waiting out a usage / session limit and resuming this topic by itself (Enable/Disable picker). Per topic; run it in **General** to set the default for all topics. On by default. While a resume is waiting the picker also offers «⏭ Skip once» — drop that one resume without turning the mode off |
 | `/bind` | Bare: current binding + folder picker, with «leave current dir» (the old `/unbind`) and «create new folder» buttons |
 | `/mcp` | List MCP servers active for this thread |
 
@@ -682,6 +684,11 @@ On boot the bot:
      and respawned on the current one.
 3. Re-arms pending API-error retries and scheduler timers; a run missed
    during the downtime fires one catch-up annotated with the missed time.
+   A usage-limit wait that the previous process never recognised is also
+   picked up: for a Claude json-stream topic the bot re-reads the tail of
+   the session's output log and arms the resume itself (only for a limit
+   error younger than 12 hours, only when nothing is armed already, and
+   never the same one twice — a resume you skipped stays skipped).
 4. Stays silent on a quiet hot reload; a bounded recap of missed output
    is posted only when the agent kept working while the bot was down.
 5. Schedules `setMyCommands` so the Telegram client picks up the menu.

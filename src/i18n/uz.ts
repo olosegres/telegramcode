@@ -77,6 +77,7 @@ export const uzDict: Record<string, string> = {
     '/quit /status /output — boshqaruv\n' +
     '/compact — agent kontekstini siqish\n' +
     '/compact_on_idle — bo‘sh turgandan keyin avtosiqish (almashtirgich)\n' +
+    '/auto_continue_limits — foydalanish limitidan keyin avtodavom (almashtirgich)\n' +
     '/clear — mavzu xabarlarini o‘chirish\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI tugmalar (Claude)\n' +
     '/bind — bog‘lanishni boshqarish',
@@ -319,6 +320,21 @@ export const uzDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'Bo‘sh turganda avtosiqish faol agent seansiga taalluqli. Avval bog‘langan mavzuda /claude yoki /opencode ni ishga tushiring.',
   'compactOnIdle.pendingQuestionReask': '❓ Sizda hali javob berilmagan savol bor. Javob berib davom etish uchun variantni bosing:',
 
+  'autoContinueLimits.on': 'YONIQ',
+  'autoContinueLimits.off': 'O‘CHIQ',
+  'autoContinueLimits.title': '🚧 Bu mavzu uchun foydalanish limitidan keyin avtodavom: {state}\n\nAgent foydalanish yoki seans limitiga yetganda, bot oyna qayta tiklanishini kutadi va so‘ng agentga o‘zi davom etishni aytadi (davom etish xabari pinlanadi, shuning uchun ovozi o‘chirilgan mavzuda ham bildirishnoma keladi).\n\nBarcha mavzular uchun bir vaqtda o‘zgartirish uchun buni General mavzusida ishga tushiring.',
+  'autoContinueLimits.titleGeneral': '🚧 Foydalanish limitidan keyin avtodavom — BARCHA mavzular uchun standart: {state}\n\nAgent foydalanish yoki seans limitiga yetganda, bot oyna qayta tiklanishini kutadi va so‘ng agentga o‘zi davom etishni aytadi.\n\nHar bir mavzu buni o‘zining /auto_continue_limits bilan bekor qila oladi.',
+  'autoContinueLimits.enableButton': 'Yoqish',
+  'autoContinueLimits.disableButton': 'O‘chirish',
+  'autoContinueLimits.skipButton': '⏭ Bir marta o‘tkazish',
+  'autoContinueLimits.skipDone': 'Bu davom etish o‘tkazib yuborildi.',
+  'autoContinueLimits.skipExpired': 'O‘tkazadigan narsa yo‘q — bu kutish allaqachon tugagan.',
+  'autoContinueLimits.skippedNotice': '⏭ O‘tkazib yuborildi: bu safar o‘zim davom ettirmayman. Qachon davom etishni yozing — bu mavzu uchun avtodavom yoniq qoladi.',
+  'autoContinueLimits.noticeHint': 'Shu bitta davom etishni o‘tkazib yuborish yoki bu mavzu uchun avtodavomni o‘chirish uchun /auto_continue_limits ni ishga tushiring.',
+  'autoContinueLimits.setThisTopic': '✅ Foydalanish limitidan keyin avtodavom: bu mavzu uchun {state}.',
+  'autoContinueLimits.setGlobal': '✅ Foydalanish limitidan keyin avtodavom: BARCHA mavzular uchun {state} (mavzu bo‘yicha bekor qilishlar amal qiladi).',
+  'autoContinueLimits.limitReachedDisabled': '🚧 Foydalanish limitiga yetildi. Bu mavzu uchun avtodavom o‘chirilgan, shuning uchun kutaman — qachon davom etishni yozing (avtomatik davom etish uchun /auto_continue_limits on).',
+
   'connect.prompt_key': '🔑 Keyingi xabar sifatida `{provider}` uchun API kalitni yuboring. Kalit xabarini tarixdan o‘chiraman.',
   'connect.empty_key': '❌ API kalit bo‘sh. Keyingi xabar sifatida kalitni yuboring.',
   'connect.invalid_key': '❌ Bu API kalitiga o‘xshamaydi (unda bo‘shliqlar yoki lotin bo‘lmagan belgilar bor). Keyingi xabar sifatida faqat kalitni yuboring yoki /connect ni qayta ishga tushiring.',
@@ -472,6 +488,7 @@ export const uzDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 Foydalanish chegarasiga yetdi — reset dan keyin avtomatik davom etish (~{time}).',
   'apiRetry.resuming': '↻ Davom etilmoqda…',
+  'apiRetry.limitResetResuming': '✅ Limit oynasi qayta tiklandi — bu mavzudagi ishni davom ettiraman.',
   'apiRetry.giveUp':
     '⚠️ {attempts} urinishdan keyin davom etib bo‘lmadi. Davom ettirishda xabar yuboring.',
   'apiRetry.continueNudge': "To'xtagan joyingizdan davom eting.",

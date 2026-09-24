@@ -77,6 +77,7 @@ export const ptDict: Record<string, string> = {
     '/quit /status /output — controlo\n' +
     '/compact — compactar o contexto do agente\n' +
     '/compact_on_idle — compactar automaticamente após inatividade (alternar)\n' +
+    '/auto_continue_limits — retomar automaticamente após um limite de uso (alternar)\n' +
     '/clear — apagar mensagens do tópico\n' +
     '/c /y /n /enter /up /down /tab /esc — teclas TUI (Claude)\n' +
     '/bind — gerir vínculo',
@@ -319,6 +320,21 @@ export const ptDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'A compactação automática por inatividade aplica-se a uma sessão de agente ativa. Inicie /claude ou /opencode em um tópico vinculado primeiro.',
   'compactOnIdle.pendingQuestionReask': '❓ Você ainda tem uma pergunta pendente. Toque em uma opção para respondê-la e continuar:',
 
+  'autoContinueLimits.on': 'LIGADO',
+  'autoContinueLimits.off': 'DESLIGADO',
+  'autoContinueLimits.title': '🚧 Retomada automática após um limite de uso para este tópico: {state}\n\nQuando o agente atinge um limite de uso ou de sessão, o bot espera a janela reiniciar e depois pede ao agente que continue por conta própria (a mensagem de retomada é fixada, então um tópico silenciado ainda te notifica).\n\nPara mudar para TODOS os tópicos de uma vez, execute isto no tópico General.',
+  'autoContinueLimits.titleGeneral': '🚧 Retomada automática após um limite de uso — padrão para TODOS os tópicos: {state}\n\nQuando um agente atinge um limite de uso ou de sessão, o bot espera a janela reiniciar e depois pede ao agente que continue por conta própria.\n\nCada tópico ainda pode substituir isso com seu próprio /auto_continue_limits.',
+  'autoContinueLimits.enableButton': 'Ativar',
+  'autoContinueLimits.disableButton': 'Desativar',
+  'autoContinueLimits.skipButton': '⏭ Pular uma vez',
+  'autoContinueLimits.skipDone': 'Esta retomada foi pulada.',
+  'autoContinueLimits.skipExpired': 'Nada para pular — esta espera já terminou.',
+  'autoContinueLimits.skippedNotice': '⏭ Pulado: não vou retomar esta por conta própria. Escreve-me quando continuar — a retomada automática continua ligada para este tópico.',
+  'autoContinueLimits.noticeHint': 'Execute /auto_continue_limits para pular esta retomada ou desligar a retomada automática neste tópico.',
+  'autoContinueLimits.setThisTopic': '✅ Retomada automática após um limite de uso: {state} para este tópico.',
+  'autoContinueLimits.setGlobal': '✅ Retomada automática após um limite de uso: {state} para TODOS os tópicos (substituições por tópico ainda se aplicam).',
+  'autoContinueLimits.limitReachedDisabled': '🚧 Limite de uso atingido. A retomada automática está desligada neste tópico, então vou esperar — escreve-me quando continuar (/auto_continue_limits on para retomar automaticamente).',
+
   'connect.prompt_key': '🔑 Envia a API key para `{provider}` como próxima mensagem. Vou apagar a mensagem com a chave do histórico.',
   'connect.empty_key': '❌ A API key está vazia. Envia a chave como próxima mensagem.',
   'connect.invalid_key': '❌ Isto não parece uma API key (tem espaços ou caracteres não latinos). Envia apenas a key como próxima mensagem, ou executa /connect novamente.',
@@ -472,6 +488,7 @@ export const ptDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 Limite de uso atingido — retoma automática após reset (~{time}).',
   'apiRetry.resuming': '↻ A retomar…',
+  'apiRetry.limitResetResuming': '✅ A janela do limite foi reiniciada — retomo o trabalho neste tópico.',
   'apiRetry.giveUp':
     '⚠️ Não foi possível retomar após {attempts} tentativas. Escreve-me quando continuar.',
   'apiRetry.continueNudge': 'Continua de onde paraste.',

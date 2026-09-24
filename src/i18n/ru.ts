@@ -81,6 +81,7 @@ export const ruDict: Record<string, string> = {
     '/quit /status /output — контроль\n' +
     '/compact — сжать контекст агента\n' +
     '/compact_on_idle — авто-сжатие после простоя (переключатель)\n' +
+    '/auto_continue_limits — авто-продолжение после лимита использования (переключатель)\n' +
     '/clear — удалить сообщения треда\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI-команды (Claude)\n' +
     '/bind — управление binding',
@@ -323,6 +324,21 @@ export const ruDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'Авто-сжатие при простое работает для активной сессии агента. Сначала запусти /claude или /opencode в привязанном топике.',
   'compactOnIdle.pendingQuestionReask': '❓ У тебя остался неотвеченный вопрос. Нажми на вариант, чтобы ответить и продолжить:',
 
+  'autoContinueLimits.on': 'ВКЛ',
+  'autoContinueLimits.off': 'ВЫКЛ',
+  'autoContinueLimits.title': '🚧 Авто-продолжение после лимита использования для этого топика: {state}\n\nКогда агент упирается в лимит использования или сессии, бот ждёт сброса окна и затем сам просит агента продолжить (сообщение о продолжении закрепляется, поэтому даже в заглушённом топике придёт уведомление).\n\nЧтобы переключить для ВСЕХ топиков сразу, запусти это в топике General.',
+  'autoContinueLimits.titleGeneral': '🚧 Авто-продолжение после лимита использования — по умолчанию для ВСЕХ топиков: {state}\n\nКогда агент упирается в лимит использования или сессии, бот ждёт сброса окна и затем сам просит агента продолжить.\n\nКаждый топик может переопределить это своим /auto_continue_limits.',
+  'autoContinueLimits.enableButton': 'Включить',
+  'autoContinueLimits.disableButton': 'Выключить',
+  'autoContinueLimits.skipButton': '⏭ Пропустить один раз',
+  'autoContinueLimits.skipDone': 'Это продолжение пропущено.',
+  'autoContinueLimits.skipExpired': 'Пропускать нечего — это ожидание уже завершилось.',
+  'autoContinueLimits.skippedNotice': '⏭ Пропущено: этот раз я сам продолжать не буду. Напиши, когда продолжать — авто-продолжение для этого топика остаётся включённым.',
+  'autoContinueLimits.noticeHint': 'Запусти /auto_continue_limits, чтобы пропустить это продолжение или выключить авто-продолжение для этого топика.',
+  'autoContinueLimits.setThisTopic': '✅ Авто-продолжение после лимита использования: {state} для этого топика.',
+  'autoContinueLimits.setGlobal': '✅ Авто-продолжение после лимита использования: {state} для ВСЕХ топиков (переопределения по топикам продолжают действовать).',
+  'autoContinueLimits.limitReachedDisabled': '🚧 Достигнут лимит использования. Авто-продолжение для этого топика выключено, поэтому я жду — напиши, когда продолжать (/auto_continue_limits on, чтобы продолжать автоматически).',
+
   'connect.prompt_key': '🔑 Пришли API key для `{provider}` следующим сообщением. Я удалю сообщение с ключом из истории.',
   'connect.empty_key': '❌ API key пустой. Пришли ключ следующим сообщением.',
   'connect.invalid_key': '❌ Это не похоже на API-ключ (есть пробелы или не-латинские символы). Пришли следующим сообщением только сам ключ или запусти /connect заново.',
@@ -476,6 +492,7 @@ export const ruDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 Лимит исчерпан — продолжу автоматически после сброса (~{time}).',
   'apiRetry.resuming': '↻ Продолжаю…',
+  'apiRetry.limitResetResuming': '✅ Окно лимита сброшено — продолжаю работу в этом топике.',
   'apiRetry.giveUp':
     '⚠️ Не смог возобновить после {attempts} попыток. Напиши, когда продолжить.',
   'apiRetry.continueNudge': 'Продолжай с того места, где ты остановился.',

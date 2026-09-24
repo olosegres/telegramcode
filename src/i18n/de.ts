@@ -77,6 +77,7 @@ export const deDict: Record<string, string> = {
     '/quit /status /output — Steuerung\n' +
     '/compact — Agent-Kontext komprimieren\n' +
     '/compact_on_idle — bei Leerlauf automatisch komprimieren (Umschalter)\n' +
+    '/auto_continue_limits — automatisch nach einem Nutzungslimit fortsetzen (Umschalter)\n' +
     '/clear — Thread-Nachrichten löschen\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI-Tasten (Claude)\n' +
     '/bind — Verknüpfung verwalten',
@@ -319,6 +320,21 @@ export const deDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'Auto-Komprimierung bei Leerlauf gilt für eine aktive Agent-Sitzung. Starte zuerst /claude oder /opencode in einem gebundenen Thema.',
   'compactOnIdle.pendingQuestionReask': '❓ Du hast noch eine offene Frage. Tippe auf eine Option, um sie zu beantworten und fortzufahren:',
 
+  'autoContinueLimits.on': 'AN',
+  'autoContinueLimits.off': 'AUS',
+  'autoContinueLimits.title': '🚧 Automatisches Fortsetzen nach einem Nutzungslimit für dieses Thema: {state}\n\nWenn der Agent ein Nutzungs- bzw. Sitzungslimit erreicht, wartet der Bot, bis das Zeitfenster zurückgesetzt ist, und weist den Agenten dann selbst an fortzufahren (die Fortsetzungsmeldung wird angepinnt, damit ein stummgeschaltetes Thema dich trotzdem benachrichtigt).\n\nUm es für ALLE Themen auf einmal umzuschalten, führe dies im General-Thema aus.',
+  'autoContinueLimits.titleGeneral': '🚧 Automatisches Fortsetzen nach einem Nutzungslimit — Standard für ALLE Themen: {state}\n\nWenn ein Agent ein Nutzungs- bzw. Sitzungslimit erreicht, wartet der Bot, bis das Zeitfenster zurückgesetzt ist, und weist den Agenten dann selbst an fortzufahren.\n\nJedes Thema kann dies mit seinem eigenen /auto_continue_limits überschreiben.',
+  'autoContinueLimits.enableButton': 'Aktivieren',
+  'autoContinueLimits.disableButton': 'Deaktivieren',
+  'autoContinueLimits.skipButton': '⏭ Einmal überspringen',
+  'autoContinueLimits.skipDone': 'Diese Fortsetzung wurde übersprungen.',
+  'autoContinueLimits.skipExpired': 'Nichts zu überspringen — dieses Warten ist bereits vorbei.',
+  'autoContinueLimits.skippedNotice': '⏭ Übersprungen: Ich setze diese eine nicht selbst fort. Schreib mir, wann es weitergehen soll — das automatische Fortsetzen bleibt für dieses Thema an.',
+  'autoContinueLimits.noticeHint': 'Führe /auto_continue_limits aus, um diese eine Fortsetzung zu überspringen oder das automatische Fortsetzen für dieses Thema abzuschalten.',
+  'autoContinueLimits.setThisTopic': '✅ Automatisches Fortsetzen nach einem Nutzungslimit: {state} für dieses Thema.',
+  'autoContinueLimits.setGlobal': '✅ Automatisches Fortsetzen nach einem Nutzungslimit: {state} für ALLE Themen (themenspezifische Überschreibungen gelten weiterhin).',
+  'autoContinueLimits.limitReachedDisabled': '🚧 Nutzungslimit erreicht. Automatisches Fortsetzen ist für dieses Thema aus, also warte ich — schreib mir, wann es weitergehen soll (/auto_continue_limits on für automatisches Fortsetzen).',
+
   'connect.prompt_key': '🔑 Sende den API-Key für `{provider}` als nächste Nachricht. Ich lösche die Key-Nachricht aus dem Verlauf.',
   'connect.empty_key': '❌ API-Key ist leer. Sende den Key als nächste Nachricht.',
   'connect.invalid_key': '❌ Das sieht nicht wie ein API key aus (er enthält Leerzeichen oder nicht-lateinische Zeichen). Sende als nächste Nachricht nur den Key oder starte /connect erneut.',
@@ -472,6 +488,7 @@ export const deDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 Nutzungslimit erreicht — automatisches Fortsetzen nach Reset (~{time}).',
   'apiRetry.resuming': '↻ Fortsetzen…',
+  'apiRetry.limitResetResuming': '✅ Das Limit-Fenster wurde zurückgesetzt — ich setze die Arbeit in diesem Thema fort.',
   'apiRetry.giveUp':
     '⚠️ Konnte nach {attempts} Versuchen nicht fortsetzen. Schreibe mir, wann ich weitermachen soll.',
   'apiRetry.continueNudge': 'Fahre von dort fort, wo du aufgehört hast.',

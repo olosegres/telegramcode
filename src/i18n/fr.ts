@@ -77,6 +77,7 @@ export const frDict: Record<string, string> = {
     '/quit /status /output — contrôle\n' +
     '/compact — compacter le contexte de l\'agent\n' +
     '/compact_on_idle — compactage auto après inactivité (bascule)\n' +
+    '/auto_continue_limits — reprise auto après une limite d’usage (bascule)\n' +
     '/clear — supprimer les messages du fil\n' +
     '/c /y /n /enter /up /down /tab /esc — touches TUI (Claude)\n' +
     '/bind — gérer la liaison',
@@ -319,6 +320,21 @@ export const frDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'Le compactage auto en cas d’inactivité s’applique à une session d’agent active. Lance d’abord /claude ou /opencode dans un sujet lié.',
   'compactOnIdle.pendingQuestionReask': '❓ Tu as encore une question en attente. Touche une option pour y répondre et continuer :',
 
+  'autoContinueLimits.on': 'ACTIVÉ',
+  'autoContinueLimits.off': 'DÉSACTIVÉ',
+  'autoContinueLimits.title': '🚧 Reprise automatique après une limite d’usage pour ce sujet : {state}\n\nQuand l’agent atteint une limite d’usage ou de session, le bot attend la réinitialisation de la fenêtre puis demande lui-même à l’agent de continuer (le message de reprise est épinglé, ainsi un sujet en sourdine te notifie quand même).\n\nPour le changer pour TOUS les sujets d’un coup, lance ceci dans le sujet General.',
+  'autoContinueLimits.titleGeneral': '🚧 Reprise automatique après une limite d’usage — défaut pour TOUS les sujets : {state}\n\nQuand un agent atteint une limite d’usage ou de session, le bot attend la réinitialisation de la fenêtre puis demande lui-même à l’agent de continuer.\n\nChaque sujet peut le remplacer avec son propre /auto_continue_limits.',
+  'autoContinueLimits.enableButton': 'Activer',
+  'autoContinueLimits.disableButton': 'Désactiver',
+  'autoContinueLimits.skipButton': '⏭ Passer une fois',
+  'autoContinueLimits.skipDone': 'Cette reprise a été passée.',
+  'autoContinueLimits.skipExpired': 'Rien à passer — cette attente est déjà terminée.',
+  'autoContinueLimits.skippedNotice': '⏭ Passé : je ne reprendrai pas celle-ci tout seul. Écris-moi quand continuer — la reprise automatique reste activée pour ce sujet.',
+  'autoContinueLimits.noticeHint': 'Lance /auto_continue_limits pour passer cette reprise ou désactiver la reprise automatique pour ce sujet.',
+  'autoContinueLimits.setThisTopic': '✅ Reprise automatique après une limite d’usage : {state} pour ce sujet.',
+  'autoContinueLimits.setGlobal': '✅ Reprise automatique après une limite d’usage : {state} pour TOUS les sujets (les remplacements par sujet s’appliquent toujours).',
+  'autoContinueLimits.limitReachedDisabled': '🚧 Limite d’usage atteinte. La reprise automatique est désactivée pour ce sujet, j’attends donc — écris-moi quand continuer (/auto_continue_limits on pour reprendre automatiquement).',
+
   'connect.prompt_key': '🔑 Envoyez la clé API pour `{provider}` comme prochain message. Je supprimerai le message contenant la clé de l\'historique.',
   'connect.empty_key': '❌ La clé API est vide. Envoyez la clé comme prochain message.',
   'connect.invalid_key': '❌ Cela ne ressemble pas à une API key (elle contient des espaces ou des caractères non latins). Envoyez uniquement la key comme prochain message, ou relancez /connect.',
@@ -472,6 +488,7 @@ export const frDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 Limite d\'utilisation atteinte — reprise automatique après reset (~{time}).',
   'apiRetry.resuming': '↻ Reprise…',
+  'apiRetry.limitResetResuming': '✅ La fenêtre de limite est réinitialisée — je reprends le travail dans ce sujet.',
   'apiRetry.giveUp':
     '⚠️ Impossible de reprendre après {attempts} tentatives. Écrivez-moi quand continuer.',
   'apiRetry.continueNudge': 'Continuez là où vous vous êtes arrêté.',

@@ -77,6 +77,7 @@ export const kaDict: Record<string, string> = {
     '/quit /status /output — კონტროლი\n' +
     '/compact — აგენტის კონტექსტის შეკუმშვა\n' +
     '/compact_on_idle — უმოქმედობის შემდეგ ავტო-შეკუმშვა (გადამრთველი)\n' +
+    '/auto_continue_limits — ავტო-გაგრჯელება გამოყენების ლიმიტის შემდეგ (გადამრთველი)\n' +
     '/clear — თემის შეტყობინებების წაშლა\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI ღილაკები (Claude)\n' +
     '/bind — კავშირის მართვა',
@@ -319,6 +320,21 @@ export const kaDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'უმოქმედობისას ავტო-შეკუმშვა მოქმედებს აქტიურ აგენტის სესიაზე. ჯერ დაბმულ თემაში გაუშვი /claude ან /opencode.',
   'compactOnIdle.pendingQuestionReask': '❓ შენ ჯერ კიდევ გაქვს უპასუხო კითხვა. შეეხე ვარიანტს, რომ უპასუხო და გააგრძელო:',
 
+  'autoContinueLimits.on': 'ჩართ.',
+  'autoContinueLimits.off': 'გამორთ.',
+  'autoContinueLimits.title': '🚧 ამ თემისთვის ავტო-გაგრჯელება გამოყენების ლიმიტის შემდეგ: {state}\n\nროცა აგენტი გამოყენების ან სესიის ლიმიტს აღწევს, ბოტი დაელოდება ფანჯრის განულებას და შემდეგ თავად ეუბნება აგენტს, გააგრჯელოს (გაგრჯელების შეტყობინება იპინება, ასე რომ დადუმებულ თემაშიც მიიღებ შეტყობინებას).\n\nყველა თემისთვის ერთდროულად გადასართავად გაუშვი ეს General თემაში.',
+  'autoContinueLimits.titleGeneral': '🚧 ავტო-გაგრჯელება გამოყენების ლიმიტის შემდეგ — ნაგულისხმევი ყველა თემისთვის: {state}\n\nროცა აგენტი გამოყენების ან სესიის ლიმიტს აღწევს, ბოტი დაელოდება ფანჯრის განულებას და შემდეგ თავად ეუბნება აგენტს, გააგრჯელოს.\n\nყოველ თემას შეუႫლია ეს გადააჭარბოს საკუთარი /auto_continue_limits-ით.',
+  'autoContinueLimits.enableButton': 'ჩართვა',
+  'autoContinueLimits.disableButton': 'გამორთვა',
+  'autoContinueLimits.skipButton': '⏭ ერთხელ გამოტოვება',
+  'autoContinueLimits.skipDone': 'ეს გაგრძელება გამოტოვებულია.',
+  'autoContinueLimits.skipExpired': 'გამოსატოვებელი არაფერია — ეს ლოდინი უკვე დასრულდა.',
+  'autoContinueLimits.skippedNotice': '⏭ გამოტოვებულია: ამას თვითონ არ გავაგრძელებ. მომწერე, როდის გავაგრძელო — ამ თემისთვის ავტო-გაგრძელება ჩართული რჩება.',
+  'autoContinueLimits.noticeHint': 'ამ ერთი გაგრძელების გამოსატოვებლად ან ამ თემისთვის ავტო-გაგრძელების გამოსართავად გაუშვი /auto_continue_limits.',
+  'autoContinueLimits.setThisTopic': '✅ ავტო-გაგრჯელება გამოყენების ლიმიტის შემდეგ: {state} ამ თემისთვის.',
+  'autoContinueLimits.setGlobal': '✅ ავტო-გაგრჯელება გამოყენების ლიმიტის შემდეგ: {state} ყველა თემისთვის (თემების მიხედვით გადაფარვები კვლავ მოცემებს).',
+  'autoContinueLimits.limitReachedDisabled': '🚧 გამოყენების ლიმიტი მიღწეულია. ამ თემისთვის ავტო-გაგრჯელება გამორთულია, ამიტომ ველოდები — მომწერე, როდის გავაგრჯო (/auto_continue_limits on ავტომატური გაგრჯელებისთვის).',
+
   'connect.prompt_key': '🔑 შემდეგ შეტყობინებად გამოგვიგზავნეთ `{provider}`-ის API გასაღები. გასაღების შეტყობინებას ისტორიიდან წავშლი.',
   'connect.empty_key': '❌ API გასაღები ცარიელია. შემდეგ შეტყობინებად გამოგვიგზავნეთ გასაღები.',
   'connect.invalid_key': '❌ ეს არ ჰგავს API key-ს (შეიცავს ჰარებს ან არა-ლათინურ სიმბოლოებს). შემდეგ შეტყობინებად გამოგზავნეთ მხოლოდ key, ან თავიდან გაუშვით /connect.',
@@ -472,6 +488,7 @@ export const kaDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 გამოყენების ზღვარს მიაღწია — ავტომატური გაგრძელება გადატვირთვის შემდეგ (~{time}).',
   'apiRetry.resuming': '↻ გაგრძელება…',
+  'apiRetry.limitResetResuming': '✅ ლიმიტის ფანႻარა განულდა — ამ თემაში მუშაობას განვაგრჯობ.',
   'apiRetry.giveUp':
     '⚠️ {attempts} ცდის შემდეგ ვერ გაგრძელდა. როცა გაგრძელება გსურთ გამოგვიგზავნეთ შეტყობინება.',
   'apiRetry.continueNudge': 'გააგრძელე იმ ადგილიდან, სადაც გაჩერდი.',

@@ -77,6 +77,7 @@ export const hiDict: Record<string, string> = {
     '/quit /status /output — नियंत्रण\n' +
     '/compact — एजेंट संदर्भ संक्षिप्त करें\n' +
     '/compact_on_idle — निष्क्रियता के बाद स्वतः संक्षेपण (टॉगल)\n' +
+    '/auto_continue_limits — उपयोग-सीमा के बाद स्वतः पुनःआरंभ (टॉगल)\n' +
     '/clear — थ्रेड संदेश हटाएँ\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI कुंजी (Claude)\n' +
     '/bind — बाइंडिंग प्रबंधित करें',
@@ -319,6 +320,21 @@ export const hiDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'निष्क्रियता पर स्वतः संक्षेपण किसी सक्रिय एजेंट सत्र पर लागू होता है। पहले किसी बाउंड विषय में /claude या /opencode शुरू करें।',
   'compactOnIdle.pendingQuestionReask': '❓ आपका एक प्रश्न अब भी लंबित है। उत्तर देकर आगे बढ़ने के लिए किसी विकल्प पर टैप करें:',
 
+  'autoContinueLimits.on': 'चालू',
+  'autoContinueLimits.off': 'बंद',
+  'autoContinueLimits.title': '🚧 इस विषय के लिए उपयोग-सीमा के बाद स्वतः पुनःआरंभ: {state}\n\nजब एजेंट उपयोग या सत्र की सीमा पर पहुँचता है, तो बॉट अवधि रीसेट होने तक प्रतीक्षा करता है और प्रतीक्षा के बाद स्वयं एजेंट से आगे बढ़ने को कहता है (पुनःआरंभ संदेश पिन किया जाता है, इसलिए म्यूट किए विषय में भी सूचना मिलती है)।\n\nसभी विषयों के लिए एक साथ बदलने हेतु इसे General विषय में चलाएँ।',
+  'autoContinueLimits.titleGeneral': '🚧 उपयोग-सीमा के बाद स्वतः पुनःआरंभ — सभी विषयों के लिए डिफ़ॉल्ट: {state}\n\nजब कोई एजेंट उपयोग या सत्र की सीमा पर पहुँचता है, तो बॉट अवधि रीसेट होने तक प्रतीक्षा करता है और फिर स्वयं एजेंट से आगे बढ़ने को कहता है।\n\nप्रत्येक विषय अपने /auto_continue_limits से इसे बदल सकता है।',
+  'autoContinueLimits.enableButton': 'सक्षम करें',
+  'autoContinueLimits.disableButton': 'अक्षम करें',
+  'autoContinueLimits.skipButton': '⏭ एक बार छोड़ें',
+  'autoContinueLimits.skipDone': 'यह पुनःआरंभ छोड़ दिया गया।',
+  'autoContinueLimits.skipExpired': 'छोड़ने को कुछ नहीं — यह प्रतीक्षा पहले ही समाप्त हो चुकी है।',
+  'autoContinueLimits.skippedNotice': '⏭ छोड़ दिया: मैं इसे स्वयं पुनः शुरू नहीं करूँगा। कब जारी रखना है, मुझे लिखें — इस विषय के लिए स्वतः पुनःआरंभ चालू रहेगा।',
+  'autoContinueLimits.noticeHint': 'इस एक पुनःआरंभ को छोड़ने या इस विषय के लिए स्वतः पुनःआरंभ बंद करने हेतु /auto_continue_limits चलाएँ।',
+  'autoContinueLimits.setThisTopic': '✅ उपयोग-सीमा के बाद स्वतः पुनःआरंभ: इस विषय के लिए {state}।',
+  'autoContinueLimits.setGlobal': '✅ उपयोग-सीमा के बाद स्वतः पुनःआरंभ: सभी विषयों के लिए {state} (प्रति-विषय ओवरराइड अब भी लागू रहते हैं)।',
+  'autoContinueLimits.limitReachedDisabled': '🚧 उपयोग-सीमा पूरी हो गई। इस विषय के लिए स्वतः पुनःआरंभ बंद है, इसलिए मैं रुका हूँ — कब जारी रखना है, मुझे लिखें (स्वतः जारी रखने के लिए /auto_continue_limits on)।',
+
   'connect.prompt_key': '🔑 अगले संदेश में `{provider}` के लिए API key भेजें। मैं key संदेश को इतिहास से हटा दूँगा।',
   'connect.empty_key': '❌ API key खाली है। अगले संदेश में key भेजें।',
   'connect.invalid_key': '❌ यह API key जैसा नहीं लगता (इसमें स्पेस या गैर-लैटिन अक्षर हैं)। अगले संदेश में केवल key भेजें, या /connect फिर से चलाएँ।',
@@ -472,6 +488,7 @@ export const hiDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 उपयोग सीमा पहुँची — रीसेट के बाद स्वतः पुनः ( ~{time})।',
   'apiRetry.resuming': '↻ पुनः शुरू…',
+  'apiRetry.limitResetResuming': '✅ सीमा की अवधि रीसेट हो गई — मैं इस विषय में काम फिर शुरू कर रहा हूँ।',
   'apiRetry.giveUp':
     '⚠️ {attempts} प्रयासों के बाद पुनः शुरू नहीं कर सका। जब जारी रखना हो तो संदेश भेजें।',
   'apiRetry.continueNudge': 'जहाँ रुके थे वहाँ से जारी रखें।',

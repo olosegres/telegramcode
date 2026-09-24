@@ -83,6 +83,7 @@ export const ukDict: Record<string, string> = {
     '/quit /status /output — контроль\n' +
     '/compact — стиснути контекст агента\n' +
     '/compact_on_idle — авто-стиснення після простою (перемикач)\n' +
+    '/auto_continue_limits — авто-продовження після ліміту використання (перемикач)\n' +
     '/clear — видалити повідомлення треда\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI-клавіші (Claude)\n' +
     '/bind — керування прив\'язкою',
@@ -325,6 +326,21 @@ export const ukDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'Авто-стиснення під час простою застосовується до активної сесії агента. Спочатку запусти /claude або /opencode у прив’язаній темі.',
   'compactOnIdle.pendingQuestionReask': '❓ У тебе лишилося запитання без відповіді. Натисни варіант, щоб відповісти та продовжити:',
 
+  'autoContinueLimits.on': 'УВІМК',
+  'autoContinueLimits.off': 'ВИМК',
+  'autoContinueLimits.title': '🚧 Авто-продовження після ліміту використання для цієї теми: {state}\n\nКоли агент упирається в ліміт використання або сесії, бот чекає скидання вікна, а потім сам просить агента продовжити (повідомлення про продовження закріплюється, тож навіть у стишеній темі надійде повідомлення).\n\nЩоб перемкнути для ВСІХ тем одразу, запусти це в темі General.',
+  'autoContinueLimits.titleGeneral': '🚧 Авто-продовження після ліміту використання — типове для ВСІХ тем: {state}\n\nКоли агент упирається в ліміт використання або сесії, бот чекає скидання вікна, а потім сам просить агента продовжити.\n\nКожна тема може перевизначити це власним /auto_continue_limits.',
+  'autoContinueLimits.enableButton': 'Увімкнути',
+  'autoContinueLimits.disableButton': 'Вимкнути',
+  'autoContinueLimits.skipButton': '⏭ Пропустити один раз',
+  'autoContinueLimits.skipDone': 'Це продовження пропущено.',
+  'autoContinueLimits.skipExpired': 'Нічого пропускати — це очікування вже завершилося.',
+  'autoContinueLimits.skippedNotice': '⏭ Пропущено: цього разу я сам продовжувати не буду. Напиши, коли продовжувати — авто-продовження для цієї теми лишається увімкненим.',
+  'autoContinueLimits.noticeHint': 'Запусти /auto_continue_limits, щоб пропустити це продовження або вимкнути авто-продовження для цієї теми.',
+  'autoContinueLimits.setThisTopic': '✅ Авто-продовження після ліміту використання: {state} для цієї теми.',
+  'autoContinueLimits.setGlobal': '✅ Авто-продовження після ліміту використання: {state} для ВСІХ тем (перевизначення по темах діють далі).',
+  'autoContinueLimits.limitReachedDisabled': '🚧 Досягнуто ліміт використання. Авто-продовження для цỉєї теми вимкнено, тож я чекаю — напиши, коли продовжувати (/auto_continue_limits on, щоб продовжувати автоматично).',
+
   'connect.prompt_key': '🔑 Надішли API key для `{provider}` наступним повідомленням. Я видалю повідомлення з ключем з історії.',
   'connect.empty_key': '❌ API key порожній. Надішли ключ наступним повідомленням.',
   'connect.invalid_key': '❌ Це не схоже на API key (є пробіли або нелатинські символи). Надішли наступним повідомленням лише сам ключ або запусти /connect знову.',
@@ -478,6 +494,7 @@ export const ukDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 Ліміт вичерпано — продовжу автоматично після скидання (~{time}).',
   'apiRetry.resuming': '↻ Продовжую…',
+  'apiRetry.limitResetResuming': '✅ Вікно ліміту скинуто — продовжую роботу в цій темі.',
   'apiRetry.giveUp':
     '⚠️ Не вдалося відновити після {attempts} спроб. Напиши, коли продовжити.',
   'apiRetry.continueNudge': 'Продовжуй з того місця, де ти зупинився.',

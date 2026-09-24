@@ -159,6 +159,56 @@ test('voice.retrying names the error and the pause in every locale', () => {
   }
 });
 
+test('auto-continue-limits keys exist in every locale', () => {
+  for (const code of [
+    'autoContinueLimits.on',
+    'autoContinueLimits.off',
+    'autoContinueLimits.title',
+    'autoContinueLimits.titleGeneral',
+    'autoContinueLimits.enableButton',
+    'autoContinueLimits.disableButton',
+    'autoContinueLimits.skipButton',
+    'autoContinueLimits.skipDone',
+    'autoContinueLimits.skipExpired',
+    'autoContinueLimits.skippedNotice',
+    'autoContinueLimits.setThisTopic',
+    'autoContinueLimits.setGlobal',
+    'autoContinueLimits.limitReachedDisabled',
+    // Also asserted per-locale below, but `t()` falls back to `en` for a missing
+    // key — only this parity check actually proves every locale carries it.
+    'autoContinueLimits.noticeHint',
+    'apiRetry.limitResetResuming',
+  ]) {
+    assert.ok(checkKeyInAllLangs(code), `${code} missing in some locale`);
+  }
+});
+
+test('autoContinueLimits.* state texts substitute the {state} in every locale', () => {
+  // Both titles and both confirmations render the ON/OFF word; a locale that lost
+  // the placeholder would report the setting as a literal "{state}".
+  for (const locale of localeCodes) {
+    for (const code of [
+      'autoContinueLimits.title',
+      'autoContinueLimits.titleGeneral',
+      'autoContinueLimits.setThisTopic',
+      'autoContinueLimits.setGlobal',
+    ]) {
+      const out = runWithLocale(locale, () => t(code, { state: 'ON' }));
+      assert.ok(out.includes('ON'), `expected the state in ${locale} ${code}: "${out}"`);
+      assert.ok(!out.includes('{state}'), `placeholder not substituted in ${locale} ${code}: "${out}"`);
+    }
+  }
+});
+
+test('autoContinueLimits.noticeHint names the command in every locale', () => {
+  // The hint IS the escape hatch on a limit notice (Telegram auto-links the bare
+  // command), so a locale that lost the command name leaves the user with no way out.
+  for (const locale of localeCodes) {
+    const out = runWithLocale(locale, () => t('autoContinueLimits.noticeHint'));
+    assert.ok(out.includes('/auto_continue_limits'), `expected the command in ${locale}: "${out}"`);
+  }
+});
+
 test('agent.ready substitutes an empty {infoBlock} away entirely', () => {
   const out = t('agent.ready', { label: 'OpenCode', subdir: 'myProject', argsSuffix: '', infoBlock: '' });
   assert.ok(!out.includes('{infoBlock}'), `placeholder not substituted: "${out}"`);

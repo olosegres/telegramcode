@@ -55,13 +55,28 @@ export const resetBufferMs = 60_000;
 
 /** Matches reset phrasings like "resets in 2h", "in 45m", "in 90 min". */
 const relativeResetRegex = /\bin\s+(\d+)\s*(h|hours?|m|min|minutes?)\b/i;
-/** Matches absolute clock phrasings like "resets at 3pm", "at 15:00", "at 3:30 pm". */
-const clockResetRegex = /\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
+/**
+ * Matches absolute clock phrasings after a reset trigger word. The trigger is
+ * either `at` (`resets at 3pm`, `at 15:00`) OR a BARE `reset`/`resets` — Claude's
+ * session-limit render drops the "at" entirely (`resets 10:50pm (UTC)`), which
+ * the old `at`-only pattern missed, leaving the retry on its blind 60-min delay.
+ * The hour's `(?!\d)` guard stops a leading ISO date (`2026-09-24`) from being
+ * read as an hour before the ISO branch gets its turn.
+ */
+const clockResetRegex = /\b(?:reset(?:s|ting)?|at)\s+(\d{1,2})(?!\d)(?::(\d{2}))?\s*(am|pm)?/i;
+/**
+ * An EXPLICIT timezone immediately after the clock — `(UTC)`, ` UTC`, `Z`,
+ * `+05:00`, `-0700`. Anchored at the remainder's start so only a suffix of THAT
+ * clock counts, and `\b`-terminated so a word merely starting with `Z` (`Zulu`,
+ * `Zoom`) is not read as the Zulu zone.
+ */
+const trailingZoneRegex = /^\s*\(?\s*(UTC|GMT|Z|[+-]\d{2}:?\d{2})\b\s*\)?/i;
 /** Matches an ISO-8601 timestamp anywhere in the text. */
 const isoTimestampRegex = /\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b/;
 
 const hoursPerDay = 24;
 const minutesPerHour = 60;
+const msPerDay = hoursPerDay * msPerHour;
 
 /**
  * @description The auth / logged-out phrases (`please run /login`, `not logged
@@ -70,6 +85,80 @@ const minutesPerHour = 60;
  * with `.test()`, so lastIndex never carries between calls.
  */
 export const authErrorPhrasesRe = /please run \/login|not logged in|invalid authentication credentials/i;
+
+/**
+ * The wordings that name a usage WINDOW or an exhausted balance EXPLICITLY: the
+ * qualified window limits (`session limit`, `weekly limit`, `5-hour limit`), the
+ * `hit your … limit` phrasings Claude now uses, and the balance/quota exhaustion
+ * wordings that are not spelled as a "limit" at all. Kept apart from the bare
+ * `limit reached` below because this subset is what exempts a text from
+ * {@link nonUsageLimitRe} — "hit your weekly token limit" IS a usage window, a bare
+ * "context limit exceeded" is not.
+ */
+const usageWindowPhrases = [
+  String.raw`(?:session|usage|weekly|daily|monthly|hourly|\d+-hours?)\s+limit`,
+  String.raw`(?:hit|reached|exceeded)\s+your\s+(?:[\w-]+\s+){0,3}limit`,
+  String.raw`credit balance (?:is )?too low`,
+  String.raw`out of (?:credits|usage)`,
+  String.raw`quota`,
+];
+
+/**
+ * @description Alternation SOURCE (no anchors, no flags) of the explicit
+ * usage/session-limit wordings — {@link usageWindowPhrases} plus a bare
+ * `limit reached`. Exported as a source string — not just a compiled
+ * regex — because the Claude scrape detector (`getClaudeAgentErrorLine`) has to
+ * ANCHOR the same phrases at the start of a pane row, and a single source keeps
+ * the two from drifting (the `authErrorPhrasesRe` precedent).
+ */
+export const usageLimitPhraseSource = [
+  ...usageWindowPhrases,
+  String.raw`limit\s+(?:reached|exceeded)`,
+].join('|');
+
+/** {@link usageLimitPhraseSource} compiled for a whole-text `.test()`. */
+export const usageLimitPhrasesRe = new RegExp(usageLimitPhraseSource, 'i');
+/** {@link usageWindowPhrases} compiled — the {@link nonUsageLimitRe} exemption. */
+const usageWindowPhrasesRe = new RegExp(usageWindowPhrases.join('|'), 'i');
+
+/**
+ * A limit that WAITING can never clear: a context / token / prompt-length overflow
+ * is fixed by sending less, not by sitting out a window. The real provider wording
+ * ("input length and `max_tokens` exceed context limit: … decrease input length …
+ * and try again") carries both a limit mention and a retry hint, so without this
+ * guard the generic fallback below classified it as `usageLimit` and armed a 6-hour
+ * futile wait instead of surfacing an error the operator has to act on.
+ */
+const nonUsageLimitRe = /\b(?:context|token|input|output|prompt|character)\s+(?:length\s+)?limits?\b/i;
+
+/**
+ * The GENERIC fallback's two required signals: the text mentions a limit AND
+ * carries a reset/retry hint. BOTH are required on purpose — "limit" alone
+ * matches ordinary prose ("the API limit is 5 requests per minute"), while the
+ * pairing is what every real limit message has (it always tells you when you get
+ * back in).
+ */
+const limitMentionRe = /\blimits?\b/i;
+const limitResetHintRe = /\breset(?:s|ting)?\b|\btry again\b|\bresumes?\b/i;
+
+/**
+ * @description Whether an error text is a usage / session / window limit.
+ *
+ * Two tiers, and the second one is the point: the explicit
+ * {@link usageLimitPhraseSource} list catches every wording we have actually
+ * seen, and the GENERIC fallback (a limit mention PLUS a reset/retry hint) still
+ * catches a wording the provider invents later — a rephrased limit message must
+ * not silently fall back to "relay the raw text and look hung", which is exactly
+ * what happened to `You've hit your session limit · resets 10:50pm (UTC)`.
+ *
+ * Ahead of both tiers sits {@link nonUsageLimitRe}: a context/token overflow is a
+ * limit no wait can clear, so it must never arm one.
+ */
+export function checkIsUsageLimitText(text: string): boolean {
+  if (nonUsageLimitRe.test(text) && !usageWindowPhrasesRe.test(text)) return false;
+  if (usageLimitPhrasesRe.test(text)) return true;
+  return limitMentionRe.test(text) && limitResetHintRe.test(text);
+}
 
 /**
  * @description Classify a backend error string into an error class, or `null`
@@ -84,7 +173,8 @@ export const authErrorPhrasesRe = /please run \/login|not logged in|invalid auth
  *     Tested BEFORE usage on purpose: the live transient string literally reads
  *     "...(not your usage limit)...", so a naive usage check would false-match it.
  *     Because transient returns here, the usage branch never sees that substring.
- *  3. usage / quota exhausted → `{ kind: 'usageLimit', resetAt? }`.
+ *  3. usage / session / window limit → `{ kind: 'usageLimit', resetAt? }`, decided
+ *     by {@link checkIsUsageLimitText} (explicit wordings + a generic fallback).
  * Anything else (normal prose, unrelated text) → `null`.
  *
  * @param now Current epoch ms — only consulted to resolve a relative/absolute
@@ -97,7 +187,7 @@ export function classifyAgentApiError(text: string, now: number): AgentApiErrorC
   if (/rate.?limited?|temporarily limiting requests|too many requests|overloaded|\b(429|503|529)\b/i.test(text)) {
     return { kind: 'transient' };
   }
-  if (/usage limit reached|credit balance (is )?too low|out of (credits|usage)|quota/i.test(text)) {
+  if (checkIsUsageLimitText(text)) {
     return { kind: 'usageLimit', resetAt: parseResetAt(text, now) };
   }
   return null;
@@ -108,9 +198,16 @@ export function classifyAgentApiError(text: string, now: number): AgentApiErrorC
  * Never throws: any unparseable / absent time yields `undefined`, which the
  * caller treats as "use the fixed delay". Handles three shapes, in order:
  *  - relative: "resets in 2h" / "in 45m" → `now + duration`.
- *  - absolute clock: "resets at 3pm" / "at 15:00" → the NEXT occurrence of that
- *    clock time at or after `now` (today if still ahead, else tomorrow).
+ *  - absolute clock: "resets at 3pm" / "at 15:00" / "resets 10:50pm (UTC)" → the
+ *    NEXT occurrence of that clock time at or after `now`. An EXPLICIT zone
+ *    suffix is load-bearing: the clock is then resolved IN THAT ZONE, not in the
+ *    instance/host zone. Without it a `10:50pm (UTC)` reset on a `+04:00` box
+ *    resolved four hours EARLY — the retry fires while the limit still holds,
+ *    re-errors, and burns one of the six attempts for nothing.
  *  - ISO timestamp anywhere in the text → `Date.parse`.
+ *
+ * A clock shape that fails to resolve (out-of-range hour) falls THROUGH to the
+ * ISO branch rather than giving up, so a message carrying both still parses.
  *
  * @param now Current epoch ms, used to resolve relative durations and to pick
  *   the next occurrence of an absolute clock time.
@@ -126,7 +223,8 @@ export function parseResetAt(text: string, now: number): number | undefined {
 
   const clockMatch = clockResetRegex.exec(text);
   if (clockMatch) {
-    return resolveNextClockTime(clockMatch, now);
+    const resolved = resolveNextClockTime(clockMatch, text, now);
+    if (resolved !== undefined) return resolved;
   }
 
   const isoMatch = isoTimestampRegex.exec(text);
@@ -139,11 +237,30 @@ export function parseResetAt(text: string, now: number): number | undefined {
 }
 
 /**
- * Resolve an "at HH[:MM] [am|pm]" match to the next epoch ms at or after `now`
- * that lands on that wall-clock time (local zone). Returns `undefined` for an
- * out-of-range hour rather than guessing.
+ * Read an explicit zone token to an offset from UTC in ms, or `undefined` when it
+ * is not a zone we can resolve arithmetically. `Z`/`UTC`/`GMT` are zero;
+ * `±HH:MM` / `±HHMM` are taken literally (a fixed offset needs no DST rules).
  */
-function resolveNextClockTime(match: RegExpExecArray, now: number): number | undefined {
+function getZoneOffsetMs(zone: string): number | undefined {
+  const upper = zone.toUpperCase();
+  if (upper === 'UTC' || upper === 'GMT' || upper === 'Z') return 0;
+  const match = /^([+-])(\d{2}):?(\d{2})$/.exec(zone);
+  if (!match) return undefined;
+  const hours = Number.parseInt(match[2], 10);
+  const minutes = Number.parseInt(match[3], 10);
+  if (hours >= hoursPerDay || minutes >= minutesPerHour) return undefined;
+  const sign = match[1] === '-' ? -1 : 1;
+  return sign * (hours * msPerHour + minutes * msPerMinute);
+}
+
+/**
+ * Resolve a clock match to the next epoch ms at or after `now` that lands on that
+ * wall-clock time. When the text carries an explicit zone right after the clock
+ * the arithmetic is done in THAT zone (pure offset math, no `Intl`); otherwise it
+ * falls back to the process-local zone (which `/timezone` already re-bases).
+ * Returns `undefined` for an out-of-range hour/minute rather than guessing.
+ */
+function resolveNextClockTime(match: RegExpExecArray, text: string, now: number): number | undefined {
   const rawHour = Number.parseInt(match[1], 10);
   const minute = match[2] ? Number.parseInt(match[2], 10) : 0;
   const meridiem = match[3]?.toLowerCase();
@@ -154,6 +271,18 @@ function resolveNextClockTime(match: RegExpExecArray, now: number): number | und
 
   if (hour < 0 || hour >= hoursPerDay || minute < 0 || minute >= minutesPerHour) {
     return undefined;
+  }
+
+  const zoneMatch = trailingZoneRegex.exec(text.slice(match.index + match[0].length));
+  const offsetMs = zoneMatch ? getZoneOffsetMs(zoneMatch[1]) : undefined;
+  if (offsetMs !== undefined) {
+    // Shift onto the zone's timeline, snap to that zone's midnight, then shift
+    // back — `Date`'s local-zone getters are unusable for a foreign zone.
+    const shiftedNow = now + offsetMs;
+    const zoneDayStart = Math.floor(shiftedNow / msPerDay) * msPerDay;
+    let candidateShifted = zoneDayStart + hour * msPerHour + minute * msPerMinute;
+    if (candidateShifted < shiftedNow) candidateShifted += msPerDay;
+    return candidateShifted - offsetMs;
   }
 
   const candidate = new Date(now);

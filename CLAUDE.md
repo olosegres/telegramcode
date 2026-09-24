@@ -463,9 +463,17 @@ config/variants, not a per-message API field).
   Detection is at the **adapter boundary** via the `apiError` event: OpenCode
   classifies in `handleSessionError` (`session.error`, structural); Claude runs
   the scraped pane through `getClaudeAgentErrorLine` — a line STARTING with
-  `API Error:`, OR a `⎿` result row that contains `API Error:`, OR a `⎿` result
-  row whose content LEADS with a logged-out phrase (`not logged in` / `please run
-  /login` / `invalid authentication credentials`) — then `classifyAgentApiError`,
+  `API Error:`, OR a `⎿` result row that contains `API Error:`, OR a row whose
+  content LEADS with a logged-out phrase (`not logged in` / `please run /login` /
+  `invalid authentication credentials`) or with a usage/session-LIMIT phrase
+  (`You've hit your session limit · resets 10:50pm (UTC)` carries no `API Error:`
+  marker at all; the phrase alternation is shared with the classifier via
+  `usageLimitPhraseSource`, and the row may lead with up to three
+  punctuation-free words so "You've hit …" still matches while a quoted log/path
+  prefix cannot; because this shape has NO glyph/`API Error:` anchor it needs a
+  SECOND signal — the row must also read like an error, `reached`/`exceeded`/
+  `resets`/`try again`/`·`, else the agent's own prose about limits
+  ("Session limits reset weekly") fires a bogus episode) — then `classifyAgentApiError`,
   behind a one-shot guard. **Two false-positive guards (both live 2026-07-03,
   topic 201):** (1) detection scans the NEW pane delta only, never the full pane
   — a stale `⎿ … /login` row lingers in the scrollback long after re-login, and
@@ -479,9 +487,8 @@ config/variants, not a per-message API field).
   in") would otherwise fire; a real logged-out row leads with it, a quote embeds
   it after other text. Classes (markers verified against the `claude.exe`
   string table): *transient* (rate-limit / overloaded / 429·503·529) → retry
-  +5/10/20 min, 3 tries; *usageLimit* (usage-limit reached / credit-balance too
-  low) → +60 min re-armed each repeat up to 6× (or a parsed reset time, rare);
-  *auth* (login / bad credentials) → **never retried, but SURFACED**: a deduped,
+  +5/10/20 min, 3 tries; *usageLimit* → +60 min re-armed each repeat up to 6×, or
+  the parsed reset time; *auth* (login / bad credentials) → **never retried, but SURFACED**: a deduped,
   PINNED logged-out notice (Claude → send `/login`; OpenCode → restart the
   server), one notification per episode, cleared on recovery (first real output
   after re-login) and at teardown — pre-fix a logged-out Claude emitted NOTHING
@@ -492,7 +499,50 @@ config/variants, not a per-message API field).
   OpenCode's optimistic `isBusy` is not cleared on `session.error` and would
   stall the 10-min cap). Any user message / `/new` / `/quit` / leaving a folder
   cancels a pending retry; pending retries survive a bot restart (`state.json`
-  `apiRetries`, re-armed after reattach). **Live-verify caveat:** a Claude
+  `apiRetries`, re-armed after reattach).
+  **Limit wordings + the reset clock (`checkIsUsageLimitText` / `parseResetAt`).**
+  The *usageLimit* vocabulary is two-tier: an explicit list (qualified
+  `session`/`weekly`/`daily`/`monthly`/`hourly`/`N-hour` limits, `hit your … limit`,
+  a bare `limit reached`, credit/quota exhaustion) PLUS a GENERIC fallback — a
+  limit mention AND a reset/retry hint (`resets` / `try again` / `resumes`). Both
+  signals are required so ordinary prose ("the API limit is 5 requests per minute")
+  stays unmatched, while a wording the provider invents later still arms. Ahead of
+  both tiers sits one NEGATIVE guard: a context / token / prompt-length limit is a
+  limit no wait can clear (the real 400 reads "input length and `max_tokens` exceed
+  context limit … and try again", i.e. limit + retry hint), so it classifies as
+  `null` and is relayed instead of arming a 6-hour futile wait — unless the text
+  ALSO names a usage window ("hit your weekly token limit"), which is a real limit.
+  `parseResetAt` also reads `resets <clock>` with no "at", and an EXPLICIT zone
+  suffix (`(UTC)`, `UTC`, `GMT`, `Z`, `±HH:MM`) is load-bearing: the clock is then
+  resolved IN THAT ZONE, because reading `10:50pm (UTC)` as instance-local fires the
+  retry hours early, re-errors, and burns an attempt.
+  **`/auto_continue_limits` gates the usageLimit class ONLY** (per-thread override,
+  General sets the instance default, ON by default; `state.json`
+  `autoContinueOnLimitEnabled` + `autoContinueOnLimitOverrides`). OFF ⇒ one
+  "auto-resume is off for this topic" notice per episode and NO timer/record;
+  *transient* and *auth* are untouched by it. When it is ON, the arming notice ends
+  with the shared `autoContinueLimits.noticeHint` pointer (one key, appended at one
+  choke point, so the reset-time and "in N min" variants cannot drift), and the
+  resume message for a *usageLimit* fire is a PINNED, NOTIFYING message (the wait
+  can last hours in a muted topic) retired by `cancelApiRetry` — i.e. on the next
+  user message or any teardown — and by the arming of the NEXT limit wait, so a
+  fully autonomous topic (no user message between episodes) still notifies each
+  time instead of leaving one stale pin and going silent.
+  **Boot recovery of a pre-restart episode (`utils/limitEpisodeRecovery.ts`).** An
+  UNRECOGNISED limit left nothing persisted, so the topic stays parked after a bot
+  update. At boot, after `restoreApiRetries`, each active json-stream Claude thread
+  with no armed record (and with the toggle ON — an OFF topic is skipped outright,
+  or every hot reload would re-post its OFF notice for the same stale error) has the
+  TAIL of its `stdout.jsonl` (64 KB, never the whole
+  file) re-read: a trailing terminal `result` error classifying as *usageLimit*,
+  younger than 12h, is replayed through `handleApiError` so notice/timer/persistence
+  behave identically to a live error — and the log's identity (size+mtime) is
+  stamped into `state.json` `limitEpisodesRecovered`, so an UNCHANGED log is never
+  recovered twice (a skip / takeover / give-up clears the armed record but leaves
+  the same trailing error, and hot mode reloads on every code change).
+  JSON-STREAM ONLY — the tmux pane and
+  OpenCode's SSE leave no comparable on-disk evidence.
+  **Live-verify caveat:** a Claude
   rate-limit / 401 isn't inducible on demand, so the `getClaudeAgentErrorLine`
   cases are covered by unit tests against REAL scraped samples, not a live repro.
   If a Claude API error did NOT trigger, grep the bot log for `[Claude] API
@@ -529,6 +579,8 @@ config/variants, not a per-message API field).
 | `utils/claudeAuthLogin.ts` | Pure helpers behind the json-stream `/login` out-of-band flow: `parseClaudeAuthLoginUrl` (clean OAuth URL out of the ANSI/OSC-8 pty output — stops at the BEL), `checkIsClaudeAuthLoginCodePrompt` (the "paste code" gate; shares `claudeLoginPastePromptRe` with the tmux login-paste detection), `parseAuthStatusLoggedIn` + `checkIsAuthLoginSucceeded` (status-authoritative, exit-code fallback), `getLoginCommandRoute` (`outOfBand` only for a json-stream RAW pick, else `forwardToAgent`). The impure pty driver + per-thread state live in `bot.ts` (`startClaudeAuthLogin` / `submitClaudeAuthLoginCode` / `cancelClaudeAuthLogin`) |
 | `utils/compactCommandRoute.ts` | Pure three-way route for the bot-owned `/compact`: `getCompactCommandRoute({hasCompactContext, adapterName, terminalAdapterName})` → `adapterCompact` (the backend has a real compaction path — OpenCode + json-stream Claude implement `compactContext`), `notSupported` (terminal: a shell has no context), else `forwardToAgent` (the tmux Claude backend parses `/compact` natively). Kept out of `bot.ts` so the decision is unit-testable, like `getLoginCommandRoute` |
 | `utils/compactOnIdle.ts` | Pure helpers for compact-on-idle (F2) + the shared closing-section + the D3 summary guidance: `idleCompactMs` (55min), `resolveCompactOnIdleEnabled` (per-thread override wins, else default-on), `checkShouldFireIdleCompaction` (enabled+active+not-real-turn-busy+not-latched+has-turn fire guard), `checkIsBusyForRealTurn` (`isBusy && !hasPendingQuestion` — a pending question is NOT a blocker, D1), `compactionSummaryGuidance` (the D3 maximally-complete + session-specific text, a code constant kept consistent with the OpenCode fork's baked prompt) + `buildCompactionInstruction` (compose D3 guidance — skipped for OpenCode, which bakes it — + the F2 closing directive), the closing sentinel markers (`compactionClosingStartMarker`/`compactionClosingEndMarker`), and `extractCompactionClosingSection` (lift the "Where we stopped" prose out of a generated summary, backend-agnostic). `bot.ts` owns the per-thread timers (`runThreadCompaction` seam, the idle watchdog, the F1 deferred-arm drain), the persisted user-latch (`state.compactIdleLatchedThreads`, cleared by `noteThreadUserActivity`), and the D1 re-ask (`reAskedQuestionOptions` + the `reask_<idx>` action) |
+| `utils/autoContinueOnLimit.ts` | Pure layer behind `/auto_continue_limits`: `resolveAutoContinueOnLimitEnabled` (per-thread override wins, else the instance default, ON when unset — the auto-resume was unconditional before the toggle), plus the «⏭ Skip once» button's `acl_skip_<fireAt>` codec (`buildSkipArmedRetryCallbackData` / `parseSkipArmedRetryCallbackData`) and `getArmedRetrySkipDecision` — `skip` ONLY when the baked `fireAt` matches the thread's currently armed record, else `expired` with no state change, so an untouched older picker can never cancel a LATER episode |
+| `utils/limitEpisodeRecovery.ts` | Pure layer for recovering a usage-limit episode that ENDED BEFORE the bot restarted (nothing persisted to re-arm): `getLastTerminalErrorText` (the last terminal `result` error in a json-stream `stdout.jsonl` tail, reusing `parseStreamJsonLine` + `classifyClaudeStreamMessage`; a later healthy turn clears the verdict) and `decideLimitEpisodeRecovery` (arm only for `usageLimit`, only with no armed record, only when the log is younger than `limitEpisodeMaxAgeMs` = 12h, and only when the log's `LimitEpisodeMarker` identity CHANGED since the episode a previous boot already handled — else `skip: 'alreadyHandled'`). `bot.ts` does the one `statSync` + bounded tail read (`limitEpisodeTailMaxBytes` = 64 KB), stamps `state.json` `limitEpisodesRecovered`, and replays through `handleApiError`. JSON-STREAM ONLY — the other backends leave no on-disk tail |
 | `utils/openCodeAuthLogin.ts` | Pure helpers behind OpenCode `/connect`: custom OAuth/multi-step methods come from `/provider/auth`; ordinary providers (including OpenRouter) are validated against the full `/provider` catalog and receive the generic API-key method used by OpenCode's native picker. Also owns OAuth pty parsing and `auth.json` success checks |
 | `openCodeSessionRouting.ts` | Pure helpers: match an SSE event to its owning session via child→parent lineage (`checkIsEventForSession`), record lineage (`updateSessionLineage`), verify strict descent (`getLineageDepthToAncestor` — busy tracking records a busy CHILD only for a verified descendant, so a dir-fallback-routed foreign sibling's busy=true never pins the thread busy) |
 | `utils/sseStreamLifecycle.ts` | Pure decision logic for the OpenCode adapter's single `/global/event` stream: open/close edge detection (`getSseStreamTransition`, driven by the TOTAL active-session count — open on first session anywhere, close on last). The per-directory helpers (`countActiveSessionsForDirectory`, `getWantedStreamDirectories`) now serve scheduler-MCP per-directory tracking, not the stream |
@@ -791,9 +843,19 @@ OpenCode events / bindings).
     normal welcome stack. Invalid name → error, mode stays armed for retry.
     Any command exits the mode. `/bind <subdir>` direct form is unchanged.
 - **Agent control (proxied):** `/model`, `/connect`, `/disconnect`, `/effort`,
-  `/verbosity`, `/thinking`, `/compact_on_idle`,
+  `/verbosity`, `/thinking`, `/compact_on_idle`, `/auto_continue_limits`,
   `/tool_results`, `/subagent`, `/output`, `/schedule`, `/claude_mode`, and raw TUI
   keys `/c`, `/y`, `/n`, `/enter`, `/up`, `/down`, `/tab`, `/esc` (`/escape`)
+  - `/auto_continue_limits [on|off]` toggles waiting out a usage/session limit and
+    resuming the topic by itself (see the auto-retry entry above). Regular topic →
+    per-thread override; General → the instance-wide default; ON by default, no
+    session/adapter gate (a limit can hit any topic at any time). Bare → a picker:
+    Enable/Disable with `✓` on the current value, plus a «⏭ Skip once» row rendered
+    ONLY while a resume is actually armed. Skip drops THAT armed resume and leaves
+    the setting alone; Disable flips the setting off AND drops it. The skip button
+    bakes the armed record's `fireAt` into its `callback_data`
+    (`acl_skip_<fireAt>`), so an untouched older picker can never cancel a LATER
+    episode — a mismatch answers "expired" and changes nothing.
   - `/claude_mode [json|tmux]` switches THIS topic's Claude Code backend between
     the tmux-scrape adapter (`'claude'`) and the structured stream-json adapter
     (`claudeJsonStreamAdapterName`) — the two share the on-disk transcript, so a
@@ -1185,6 +1247,17 @@ handler's guard that stops a bot-owned slash from ALSO being re-forwarded to the
 agent as a prompt; omit it and e.g. `/esc` reaches the agent verbatim. (A
 retired command is kept in the set on purpose so a stray `/where` is swallowed
 rather than typed into the agent.)
+
+**A one-shot setting picker CONSUMES its keyboard** — edit the message into a short
+confirmation and drop the markup (`/language`, `/auto_continue_limits`), because a
+keyboard left on screen invites a stale tap against newer state. A picker meant for
+repeated use instead re-renders in place (`/model`, `/effort`, `/compact_on_idle`);
+when its `callback_data` carries an INDEX into a mutable list, snapshot that list
+per MESSAGE (`/disconnect`) or bake the identity into the data
+(`acl_skip_<fireAt>`).
+
+**Telegram auto-links a bare `/command` written in message text** — to point the
+user at a setting, name the command in the prose instead of attaching a button.
 
 ## Privacy gate — the repo is public
 

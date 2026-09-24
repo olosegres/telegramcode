@@ -24,7 +24,7 @@ import type {
   ThreadLocaleReader,
 } from '../types';
 import { keyToString } from '../types';
-import { classifyAgentApiError } from '../apiErrorRetry';
+import { classifyAgentApiError, usageLimitPhraseSource } from '../apiErrorRetry';
 import { checkIsInstalled, installTool } from '../installManager';
 import { prepareMcpFlags, cleanupMcpTempFiles } from '../mcpConfig';
 import { resolveDataDir } from '../state';
@@ -2712,6 +2712,36 @@ const CLAUDE_API_ERROR_SUBSTR_RE = /API Error:/;
  */
 const CLAUDE_AUTH_ROW_RE =
   /^\s*⎿\s*(?:not logged in|please run \/login|invalid authentication credentials)\b/i;
+/**
+ * @description A row whose CONTENT leads with a usage/session-limit phrase — the
+ * render behind `You've hit your session limit · resets 10:50pm (UTC)`, which
+ * carries no `API Error:` marker and so matched none of the shapes (a)–(c). The
+ * optional leading glyph covers the `⎿` result marker and the `●`/`⏺` output
+ * bullet; up to three punctuation-free words may precede the phrase because the
+ * live wording leads with a subject ("You've hit …"). That bounded, punctuation-
+ * free lead-in is the false-positive guard (case (d)): a QUOTED phrase inside a
+ * tool result always carries a path / colon / bracket first (`⎿ log:224:[Claude]
+ * … session limit`), so it can never reach the phrase. The phrase alternation
+ * itself is shared with {@link classifyAgentApiError} via
+ * {@link usageLimitPhraseSource} so the detector and the classifier cannot drift.
+ */
+const CLAUDE_LIMIT_ROW_RE = new RegExp(
+  String.raw`^\s*(?:[⎿●⏺]\s*)?(?:[A-Za-z][A-Za-z'’]*[ ]){0,3}(?:${usageLimitPhraseSource})`,
+  'i',
+);
+/**
+ * @description SECOND required signal for case (d): the row must also READ like a
+ * terminal limit error, not like the agent's own prose ABOUT limits. Case (d) is
+ * the only shape with no glyph/`API Error:` anchor, so the lead-in alone let any
+ * answer line that merely STARTS with a limit phrase fire a bogus episode
+ * (`Session limits reset weekly for every plan.` / `Usage limits apply per 5-hour
+ * window.` armed a 60-min wait and pushed a "continue" nudge into a healthy
+ * topic — trivially reachable in a topic where the agent discusses limits, e.g.
+ * this feature itself). Every real row carries one of these markers
+ * (`… limit · resets 10:50pm (UTC)`, `… limit reached ∙ resets 3am`); the bare
+ * verb prose uses ("limits reset weekly") is deliberately NOT in the list.
+ */
+const CLAUDE_LIMIT_ROW_SHAPE_RE = /\b(?:reached|exceeded|resets|resetting|try again|too low)\b|[·∙]/i;
 
 /**
  * @description Find the ONE line in a scraped pane that is a terminal
@@ -2724,20 +2754,26 @@ const CLAUDE_AUTH_ROW_RE =
  *      MISSED, which is why a `⎿`-prefixed rate-limit never auto-retried).
  *   c) a `⎿` result row whose content LEADS with an auth phrase
  *      (`⎿  Not logged in · Please run /login` — the logged-out render).
+ *   d) a row whose content LEADS with a usage/session-limit phrase AND reads like
+ *      an error ({@link CLAUDE_LIMIT_ROW_SHAPE_RE}) — `You've hit your session
+ *      limit · resets 10:50pm (UTC)` carries no `API Error:` marker at all, so
+ *      (a)–(c) all missed it.
  * FALSE-POSITIVE GUARD: prose never starts a line with the `⎿` glyph nor with
  * `API Error:`. But TOOL results (Bash/Read/Grep output) ARE rendered by the TUI
  * under a `⎿` marker, so a result row that QUOTES an auth phrase deeper in the
  * line (the agent grepping the bot's own logs/source, or a `gh`/`npm` "not
  * logged in" line) would fire case (c) if we matched the phrase anywhere. So (c)
- * anchors the phrase to the row START — a real logged-out row leads with it; a
- * quote embeds it after other text (live 2026-07-03, topic 434). The returned
- * line is fed VERBATIM to {@link classifyAgentApiError}. Exported for unit
- * testing without a live tmux pane.
+ * — and (d), for the same reason — anchor the phrase to the row START: a real
+ * error row leads with it; a quote embeds it after other text (live 2026-07-03,
+ * topic 434). The returned line is fed VERBATIM to
+ * {@link classifyAgentApiError}. Exported for unit testing without a live tmux
+ * pane.
  */
 export function getClaudeAgentErrorLine(content: string): string | null {
   for (const line of content.split('\n')) {
     if (CLAUDE_API_ERROR_START_RE.test(line)) return line;
     if (CLAUDE_AUTH_ROW_RE.test(line)) return line;
+    if (CLAUDE_LIMIT_ROW_RE.test(line) && CLAUDE_LIMIT_ROW_SHAPE_RE.test(line)) return line;
     if (TOOL_RESULT_MARKER_RE.test(line) && CLAUDE_API_ERROR_SUBSTR_RE.test(line)) return line;
   }
   return null;

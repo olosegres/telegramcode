@@ -77,6 +77,7 @@ export const jaDict: Record<string, string> = {
     '/quit /status /output — 制御\n' +
     '/compact — エージェントのコンテキストを圧縮\n' +
     '/compact_on_idle — アイドル後に自動圧縮（切り替え）\n' +
+    '/auto_continue_limits — 使用量上限後に自動再開（切り替え）\n' +
     '/clear — スレッドのメッセージを削除\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI キー（Claude）\n' +
     '/bind — バインドを管理',
@@ -319,6 +320,21 @@ export const jaDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'アイドル自動圧縮はアクティブなエージェントセッションに適用されます。まずバインド済みのトピックで /claude か /opencode を開始してください。',
   'compactOnIdle.pendingQuestionReask': '❓ 未回答の質問が残っています。オプションをタップして回答し、続行してください：',
 
+  'autoContinueLimits.on': 'オン',
+  'autoContinueLimits.off': 'オフ',
+  'autoContinueLimits.title': '🚧 このトピックの使用量上限後の自動再開：{state}\n\nエージェントが使用量／セッションの上限に達すると、ボットはウィンドウのリセットを待ち、その後エージェントに続行するよう自分で指示します（再開メッセージはピン留めされるので、ミュート中のトピックでも通知が届きます）。\n\nすべてのトピックを一度に切り替えるには、General トピックでこれを実行してください。',
+  'autoContinueLimits.titleGeneral': '🚧 使用量上限後の自動再開 — すべてのトピックの既定：{state}\n\nエージェントが使用量／セッションの上限に達すると、ボットはウィンドウのリセットを待ち、その後エージェントに続行するよう自分で指示します。\n\n各トピックは独自の /auto_continue_limits で上書きできます。',
+  'autoContinueLimits.enableButton': '有効化',
+  'autoContinueLimits.disableButton': '無効化',
+  'autoContinueLimits.skipButton': '⏭ 今回はスキップ',
+  'autoContinueLimits.skipDone': 'この再開をスキップしました。',
+  'autoContinueLimits.skipExpired': 'スキップするものがありません — この待機はすでに終了しています。',
+  'autoContinueLimits.skippedNotice': '⏭ スキップしました：今回は自動で再開しません。続けるタイミングを書いてください — このトピックの自動再開はオンのままです。',
+  'autoContinueLimits.noticeHint': 'この再開だけをスキップする、またはこのトピックの自動再開をオフにするには /auto_continue_limits を実行してください。',
+  'autoContinueLimits.setThisTopic': '✅ 使用量上限後の自動再開：このトピックで {state}。',
+  'autoContinueLimits.setGlobal': '✅ 使用量上限後の自動再開：すべてのトピックで {state}（トピックごとの上書きは引き続き有効）。',
+  'autoContinueLimits.limitReachedDisabled': '🚧 使用量の上限に達しました。このトピックでは自動再開がオフなので待機します — 続けるタイミングを書いてください（自動で再開するには /auto_continue_limits on）。',
+
   'connect.prompt_key': '🔑 次のメッセージで `{provider}` の API key を送信してください。キーを含むメッセージを履歴から削除します。',
   'connect.empty_key': '❌ API key が空です。次のメッセージでキーを送信してください。',
   'connect.invalid_key': '❌ これは API key のようには見えません（スペースや非ラテン文字が含まれています）。次のメッセージで key だけを送信するか、/connect をもう一度実行してください。',
@@ -472,6 +488,7 @@ export const jaDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 利用量制限に到達 — リセット後に自動再開します（~{time}）。',
   'apiRetry.resuming': '↻ 再開中…',
+  'apiRetry.limitResetResuming': '✅ 制限のウィンドウがリセットされました — このトピックの作業を再開します。',
   'apiRetry.giveUp':
     '⚠️ {attempts} 回の試行後に再開できませんでした。続行する時にメッセージを送ってください。',
   'apiRetry.continueNudge': '止まったところから続けてください。',

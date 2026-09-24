@@ -282,6 +282,20 @@ export interface ApiRetryState {
 }
 
 /**
+ * @description IDENTITY of a json-stream session's `stdout.jsonl` — its byte size
+ * plus mtime. Recorded (`state.json` `limitEpisodesRecovered`) when the boot
+ * recovery arms a limit wait from that log's trailing error, and compared against
+ * the live stat on every later boot: an UNCHANGED log means nothing has happened
+ * since we handled that error, so re-arming would resurrect a wait the user (or a
+ * give-up) already settled. Any real turn appends frames, which changes the
+ * identity — so a genuinely NEW trailing error is handled again.
+ */
+export interface LimitEpisodeMarker {
+  sizeBytes: number;
+  mtimeMs: number;
+}
+
+/**
  * @description THE unified verbosity vocabulary for every per-thread display
  * preference (`/thinking`, `/tool_results`, `/subagent`). Per-thread, persisted
  * (see `state.ts` `displayPrefs`). A bot-RENDERING concern only — it never

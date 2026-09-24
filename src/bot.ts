@@ -32,7 +32,7 @@ import {
 } from './adapters/createAdapter';
 import { ClaudeJsonStreamAdapter, claudeJsonStreamAdapterName } from './adapters/claudeJsonStreamAdapter';
 import { checkShouldPostReattachRecap, formatReattachRecap } from './resumeContext';
-import type { ThreadKey, AgentAdapter, AgentRuntimeInfo, AgentSession, DisplayVerbosityMode, OpenCodeQuestion, OutputEventMeta, OutputTransport, PendingQuestionState, AgentApiErrorClass, ResolvedThreadDisplayPrefs, SeenWatermark, SubagentStatusEvent, ThinkingEvent, ToolResultEvent } from './types';
+import type { ThreadKey, AgentAdapter, AgentRuntimeInfo, AgentSession, DisplayVerbosityMode, OpenCodeQuestion, OutputEventMeta, OutputTransport, PendingQuestionState, AgentApiErrorClass, LimitEpisodeMarker, ResolvedThreadDisplayPrefs, SeenWatermark, SubagentStatusEvent, ThinkingEvent, ToolResultEvent } from './types';
 import { createOutputTransport } from './output/createOutputTransport';
 import { keyToString, keyFromString } from './types';
 // Pure parser lives in `./agentTrigger` so it can be unit-tested without
@@ -253,7 +253,13 @@ import {
   fileRetentionMs,
   fileSweepIntervalMs,
 } from './botFileStorage';
-import { resolveJsonStreamRoot, sweepOrphanJsonStreamDirs } from './utils/jsonStreamHost';
+import {
+  resolveJsonStreamRoot,
+  sweepOrphanJsonStreamDirs,
+  resolveJsonStreamSessionDir,
+  getJsonStreamSessionPaths,
+  readFileByteRange,
+} from './utils/jsonStreamHost';
 import { RunLedger } from './scheduler/runLedger';
 import { createScheduleDelivery, unboundDeliveryError } from './scheduler/delivery';
 import { createSchedulerEngine, maxTimeoutMs, type SchedulerEngine } from './scheduler/engine';
@@ -289,6 +295,17 @@ import {
   compactionClosingStartMarker,
   compactionClosingEndMarker,
 } from './utils/compactOnIdle';
+import {
+  decideLimitEpisodeRecovery,
+  getLastTerminalErrorText,
+  limitEpisodeTailMaxBytes,
+} from './utils/limitEpisodeRecovery';
+import {
+  buildSkipArmedRetryCallbackData,
+  parseSkipArmedRetryCallbackData,
+  getArmedRetrySkipDecision,
+  skipArmedRetryCallbackPrefix,
+} from './utils/autoContinueOnLimit';
 import {
   type OpenCodeAuthMethod,
   buildOpenCodeAuthLoginArgs,
@@ -1052,12 +1069,13 @@ const pendingQuestions = new Map<string, PendingQuestionState>();
  */
 const questionPinnedMessageId = new Map<string, number>();
 /**
- * @description Placeholder stored in {@link authNoticePinnedMessageId} between
- * reserving the one-notice slot and the pin landing, so a burst of auth errors
- * can't race two notices out. A real Telegram message id is always positive, so
- * `-1` can never collide with one.
+ * @description Placeholder stored in a pinned-notice map ({@link
+ * authNoticePinnedMessageId}, {@link limitResumeNoticePinnedMessageId}) between
+ * reserving the one-notice slot and the pin landing, so a burst of events can't
+ * race two notices out. A real Telegram message id is always positive, so `-1` can
+ * never collide with one.
  */
-const authNoticePendingSentinel = -1;
+const pinnedNoticePendingSentinel = -1;
 /**
  * @description Per-thread id of the PINNED "logged-out" notice (in-memory). Its
  * presence is ALSO the one-notice-per-logout-episode guard: while set, a repeat
@@ -1070,6 +1088,25 @@ const authNoticePendingSentinel = -1;
  * re-notify (see the NOTE in {@link cancelApiRetry}).
  */
 const authNoticePinnedMessageId = new Map<string, number>();
+/**
+ * @description Per-thread id of the PINNED "the limit reset, work resumed" notice
+ * (in-memory). A limit wait can run for hours in a MUTED topic, so the one message
+ * announcing that work is moving again is pinned WITH a notification — the pin is
+ * the only thing that pierces mute. Its presence doubles as the one-pin-per-episode
+ * guard. Retired (unpinned, guard dropped) by {@link cancelApiRetry}, i.e. on the
+ * thread's next genuine user message and at every session-end / teardown site, so
+ * pins never accumulate one per episode.
+ */
+const limitResumeNoticePinnedMessageId = new Map<string, number>();
+/**
+ * @description Threads that already got the "auto-continue is OFF for this topic"
+ * notice for the CURRENT limit episode. Without it every repeated limit frame
+ * (Claude re-scrapes, OpenCode can repeat `session.error`) would post the notice
+ * again — the arming path gets that dedup for free from `decideRetryAction`'s
+ * `pending` check, but the OFF path arms nothing and so needs its own guard.
+ * Cleared by {@link cancelApiRetry} (the user took over / the session went away).
+ */
+const autoContinueOffNoticedThreads = new Set<string>();
 const threadModelLists = new Map<string, string[]>();
 const awaitingModelSelection = new Set<string>();
 const statusCoalescers = new Map<string, StatusCoalesceState>();
@@ -1291,9 +1328,26 @@ interface ApiRetryTimerEntry {
   kind: AgentApiErrorClass['kind'];
   /** Epoch ms when the timer fired, or `null` while still pending. */
   firedAt: number | null;
+  /** Epoch ms the timer is due (mirrors the persisted `fireAt`). It IDENTIFIES the
+   *  episode for the «skip once» button, whose stale keyboard must never cancel a
+   *  later one. */
+  fireAt: number;
 }
 
 const apiRetryTimers = new Map<string, ApiRetryTimerEntry>();
+
+/**
+ * @description `fireAt` of the thread's currently PENDING usage-limit resume, or
+ * `null` when none is armed. Scoped to the `usageLimit` class on purpose: «skip
+ * once» belongs to the limit feature, and the short transient retries are not
+ * user-controllable at all. A record whose timer already fired (`timer === null`)
+ * is history, not something to skip.
+ */
+function getArmedLimitRetryFireAt(key: ThreadKey): number | null {
+  const entry = apiRetryTimers.get(keyToString(key));
+  if (!entry || entry.timer === null || entry.kind !== 'usageLimit') return null;
+  return entry.fireAt;
+}
 
 /**
  * Last RAW prompt forwarded to each thread (pre-preamble), kept so a wedged
@@ -1319,9 +1373,21 @@ const wedgeRecoveryTier = new Map<string, number>();
  *
  * Dedup is delegated to `decideRetryAction` (a `pending` retry → `ignore`), so a
  * repeated Claude scrape frame or a duplicate `session.error` never double-arms.
+ *
+ * `/auto_continue_limits` gates the `usageLimit` class ONLY: with it OFF the bot says so
+ * once and stops, arming nothing and persisting nothing. `transient` (the short
+ * 5/10/20-min retries) and `auth` (surfaced, never retried) are untouched by the
+ * toggle — a rate-limit hiccup always wants the automatic retry.
  */
 function handleApiError(key: ThreadKey, cls: AgentApiErrorClass): void {
   const k = keyToString(key);
+  if (cls.kind === 'usageLimit' && !state.checkIsAutoContinueOnLimitEnabled(key)) {
+    if (!autoContinueOffNoticedThreads.has(k)) {
+      autoContinueOffNoticedThreads.add(k);
+      void replyToThread(key, t('autoContinueLimits.limitReachedDisabled'));
+    }
+    return;
+  }
   const entry = apiRetryTimers.get(k);
   const prev = entry
     ? { attempt: entry.attempt, firedAt: entry.firedAt, pending: entry.timer !== null }
@@ -1350,16 +1416,25 @@ function handleApiError(key: ThreadKey, cls: AgentApiErrorClass): void {
     return;
   }
 
-  // action === 'arm'
-  if (cls.resetAt !== undefined) {
-    void replyToThread(key, t('apiRetry.usageLimitResetNotice', {
-      time: formatLocalClock(cls.resetAt),
-    }));
-  } else if (cls.kind === 'usageLimit') {
-    void replyToThread(key, t('apiRetry.usageLimitDelayNotice', {
-      minutes: Math.round(action.delayMs / apiRetryMsPerMinute),
-      attempt: action.attempt,
-    }));
+  // action === 'arm'. A LIMIT notice ends with the shared pointer at
+  // `/auto_continue_limits` (the escape hatch: skip this one resume, or turn the
+  // mode off). The transient notice gets none — it is not governed by the toggle
+  // and resumes within minutes anyway.
+  if (cls.kind === 'usageLimit') {
+    // A previous episode's pinned "work resumed" notice is stale now (we are
+    // limited again) → retire it, which also re-opens the one-pin guard so THIS
+    // episode's resume pins and notifies again. Without it the guard survived
+    // across episodes whenever no user message intervened — exactly the
+    // autonomous case this feature exists for — leaving the old pin up and the
+    // next resume silent.
+    clearLimitResumeNotice(key);
+    const text = cls.resetAt !== undefined
+      ? t('apiRetry.usageLimitResetNotice', { time: formatLocalClock(cls.resetAt) })
+      : t('apiRetry.usageLimitDelayNotice', {
+          minutes: Math.round(action.delayMs / apiRetryMsPerMinute),
+          attempt: action.attempt,
+        });
+    void replyToThread(key, appendAutoContinueLimitsHint(text));
   } else {
     void replyToThread(key, t('apiRetry.transientNotice', {
       minutes: Math.round(action.delayMs / apiRetryMsPerMinute),
@@ -1380,7 +1455,13 @@ function handleApiError(key: ThreadKey, cls: AgentApiErrorClass): void {
     void fireApiRetry(key);
   }, delayMs);
   timer.unref?.();
-  apiRetryTimers.set(k, { timer, attempt: action.attempt, kind: cls.kind, firedAt: null });
+  apiRetryTimers.set(k, {
+    timer,
+    attempt: action.attempt,
+    kind: cls.kind,
+    firedAt: null,
+    fireAt: action.fireAt,
+  });
 }
 
 /**
@@ -1398,6 +1479,12 @@ function handleApiError(key: ThreadKey, cls: AgentApiErrorClass): void {
  * stamped): a recurrence within the grace window re-arms at attempt+1 via
  * {@link handleApiError}; a recovery leaves a harmless stale record that the
  * next, later error resets to attempt 1.
+ *
+ * The notice differs by class: a `usageLimit` wait can have lasted hours, so its
+ * resume is the PINNED, notifying {@link surfaceLimitResumedNotice} (the operator
+ * keeps topics muted and wants to know work restarted). The `transient` retries
+ * fire every few minutes and stay a plain line — pinning those would notify
+ * relentlessly.
  */
 async function fireApiRetry(key: ThreadKey): Promise<void> {
   return withThreadLocale(key, () => fireApiRetryWithLocale(key));
@@ -1410,7 +1497,8 @@ async function fireApiRetryWithLocale(key: ThreadKey): Promise<void> {
   entry.timer = null;
   entry.firedAt = Date.now();
 
-  void replyToThread(key, t('apiRetry.resuming'));
+  if (entry.kind === 'usageLimit') void surfaceLimitResumedNotice(key);
+  else void replyToThread(key, t('apiRetry.resuming'));
   try {
     await ensureAgentSession(key);
     await forwardPromptToAgent(key, getThreadAdapter(key), t('apiRetry.continueNudge'));
@@ -1432,6 +1520,13 @@ function cancelApiRetry(key: ThreadKey): void {
   if (entry?.timer) clearTimeout(entry.timer);
   apiRetryTimers.delete(k);
   void state.clearApiRetry(key).catch(e => console.error('[apiRetry] clear failed:', e));
+  // The limit episode is over for this thread → retire its two one-shot markers.
+  // Unlike the logged-out notice below, BOTH are safe to drop here: the pinned
+  // "work resumed" message announces a PAST event (nothing re-posts it), and the
+  // "auto-continue is off" notice can only reappear after a genuinely NEW limit
+  // error — so neither can re-notify per message.
+  clearLimitResumeNotice(key);
+  autoContinueOffNoticedThreads.delete(k);
   // NOTE: intentionally does NOT touch the logged-out notice. `cancelApiRetry`
   // fires on EVERY inbound message (user takeover); clearing the auth notice here
   // would drop the one-notice guard so the user's next prompt (into the STILL
@@ -1525,7 +1620,7 @@ async function handleNoResponseWithLocale(key: ThreadKey): Promise<void> {
  * (Claude → re-`/login`; OpenCode → restart the server). No timer, no persisted
  * retry record — a wait never recovers auth. Deduped to exactly one notice per
  * logout episode via {@link authNoticePinnedMessageId}; the slot is reserved with
- * {@link authNoticePendingSentinel} BEFORE the awaits so a burst of `apiError`
+ * {@link pinnedNoticePendingSentinel} BEFORE the awaits so a burst of `apiError`
  * frames can't race two notices out. The pin is removed on recovery — the first
  * real output after re-login ({@link clearAuthNotice}, wired in
  * {@link handleAgentOutput}) — and at the session-end / teardown sites (NOT the
@@ -1534,14 +1629,14 @@ async function handleNoResponseWithLocale(key: ThreadKey): Promise<void> {
 async function surfaceLoggedOutNotice(key: ThreadKey): Promise<void> {
   const k = keyToString(key);
   if (authNoticePinnedMessageId.has(k)) return; // already surfaced this episode
-  authNoticePinnedMessageId.set(k, authNoticePendingSentinel);
+  authNoticePinnedMessageId.set(k, pinnedNoticePendingSentinel);
 
   const messageKey =
     getThreadAdapterNameRaw(key) === 'opencode' ? 'apiRetry.loggedOutOpenCode' : 'apiRetry.loggedOutClaude';
   const id = await replyToThread(key, t(messageKey));
   if (id === null) {
     // Send failed — release the reservation so a later error can retry surfacing.
-    if (authNoticePinnedMessageId.get(k) === authNoticePendingSentinel) authNoticePinnedMessageId.delete(k);
+    if (authNoticePinnedMessageId.get(k) === pinnedNoticePendingSentinel) authNoticePinnedMessageId.delete(k);
     return;
   }
   // A concurrent teardown (clearAuthNotice) may have dropped the reservation
@@ -1564,7 +1659,50 @@ function clearAuthNotice(key: ThreadKey): void {
   const pinnedId = authNoticePinnedMessageId.get(k);
   if (pinnedId === undefined) return;
   authNoticePinnedMessageId.delete(k);
-  if (pinnedId !== authNoticePendingSentinel) void unpinMessageQuiet(key, pinnedId);
+  if (pinnedId !== pinnedNoticePendingSentinel) void unpinMessageQuiet(key, pinnedId);
+}
+
+/**
+ * @description Announce that a usage/session-limit window reset and work is moving
+ * again, as ONE PINNED, NOTIFYING message. A limit wait runs for up to an hour per
+ * attempt in a topic the operator keeps muted, so a plain line would go unseen —
+ * the pin is what fires the Telegram notification. Reserves its slot with
+ * {@link pinnedNoticePendingSentinel} BEFORE the awaits (same discipline as
+ * {@link surfaceLoggedOutNotice}) so a burst can't pin twice, and refuses to
+ * resurrect a reservation a concurrent teardown dropped mid-send.
+ */
+async function surfaceLimitResumedNotice(key: ThreadKey): Promise<void> {
+  const k = keyToString(key);
+  if (limitResumeNoticePinnedMessageId.has(k)) return; // already pinned this episode
+  limitResumeNoticePinnedMessageId.set(k, pinnedNoticePendingSentinel);
+
+  const id = await replyToThread(key, t('apiRetry.limitResetResuming'));
+  if (id === null) {
+    // Send failed — release the reservation so a later fire can retry surfacing.
+    if (limitResumeNoticePinnedMessageId.get(k) === pinnedNoticePendingSentinel) {
+      limitResumeNoticePinnedMessageId.delete(k);
+    }
+    return;
+  }
+  if (!limitResumeNoticePinnedMessageId.has(k)) return;
+  limitResumeNoticePinnedMessageId.set(k, id);
+  await pinMessageQuiet(key, id, { disableNotification: false });
+}
+
+/**
+ * @description Retire a thread's pinned limit-resumed notice: unpin it (if a real
+ * message was pinned — the sentinel means the pin hadn't landed yet) and drop the
+ * one-pin guard so a LATER limit episode notifies again. Folded into
+ * {@link cancelApiRetry}, which covers both the next genuine user message and every
+ * session-end / teardown site, so pins never accumulate one per episode. No-op when
+ * none is active.
+ */
+function clearLimitResumeNotice(key: ThreadKey): void {
+  const k = keyToString(key);
+  const pinnedId = limitResumeNoticePinnedMessageId.get(k);
+  if (pinnedId === undefined) return;
+  limitResumeNoticePinnedMessageId.delete(k);
+  if (pinnedId !== pinnedNoticePendingSentinel) void unpinMessageQuiet(key, pinnedId);
 }
 
 /** Host-local `HH:MM` of an epoch-ms instant, for the usage-limit reset notice. */
@@ -7267,6 +7405,84 @@ function buildCompactOnIdleKeyboard(isEnabled: boolean) {
   ]);
 }
 
+/**
+ * @description Append the shared `/auto_continue_limits` pointer to a usage-limit
+ * arming notice. ONE key appended at ONE place, so the reset-time notice and the
+ * "retrying in N min" fallback can never drift apart (the `effort.current_hint`
+ * block shared by both `/model`-set replies is the same pattern). No inline
+ * keyboard is needed: Telegram auto-links a bare command written in message text.
+ */
+function appendAutoContinueLimitsHint(noticeText: string): string {
+  return `${noticeText}\n\n${t('autoContinueLimits.noticeHint')}`;
+}
+
+/**
+ * @description Apply the `/auto_continue_limits` setting and RETURN the
+ * confirmation text — the single write path behind the command and its picker
+ * buttons, so the two can never drift. The caller decides delivery (the command
+ * replies; the picker edits its own message into the confirmation).
+ *
+ * Regular topic → the per-thread override; General topic → the instance-wide
+ * default. Turning it OFF for a topic also drops that topic's armed resume:
+ * staying armed after «Disable» would contradict the setting. Unlike
+ * `/compact_on_idle` there is no timer to re-arm — the toggle is read at the
+ * moment a limit error arrives.
+ */
+async function applyAutoContinueLimits(key: ThreadKey, isGeneral: boolean, enabled: boolean): Promise<string> {
+  const stateWord = enabled ? t('autoContinueLimits.on') : t('autoContinueLimits.off');
+  if (isGeneral) {
+    await state.setAutoContinueOnLimitGlobalDefault(enabled);
+    return t('autoContinueLimits.setGlobal', { state: stateWord });
+  }
+  await state.setAutoContinueOnLimitOverride(key, enabled);
+  if (!enabled) cancelApiRetry(key);
+  return t('autoContinueLimits.setThisTopic', { state: stateWord });
+}
+
+/**
+ * @description Build the `/auto_continue_limits` picker keyboard: Enable / Disable
+ * with `✓` on the current value, plus a «skip once» row ONLY while a limit resume
+ * is actually armed for the topic. A skip row with nothing to skip would be a dead
+ * end (same reasoning as the `/model` re-render never offering an empty list).
+ */
+function buildAutoContinueLimitsKeyboard(isEnabled: boolean, armedFireAt: number | null) {
+  const rows = [[
+    Markup.button.callback(t('autoContinueLimits.enableButton') + (isEnabled ? ' ✓' : ''), 'acl_on'),
+    Markup.button.callback(t('autoContinueLimits.disableButton') + (!isEnabled ? ' ✓' : ''), 'acl_off'),
+  ]];
+  if (armedFireAt !== null) {
+    rows.push([
+      Markup.button.callback(t('autoContinueLimits.skipButton'), buildSkipArmedRetryCallbackData(armedFireAt)),
+    ]);
+  }
+  return Markup.inlineKeyboard(rows);
+}
+
+// `/auto_continue_limits` — toggle waiting out a usage/session limit and resuming by
+// itself. Regular topic → per-thread override; General → the instance-wide
+// default. Bare → an Enable/Disable picker (✓ on current) plus a «skip once» row
+// while a resume is armed. Deliberately NOT gated on an adapter/session (unlike
+// `/compact_on_idle`): a limit can hit any topic at any time, and the operator must
+// be able to set the preference before that.
+command('auto_continue_limits', async (ctx, key) => {
+  const arg = ctx.message.text.split(/\s+/).slice(1).join(' ').trim().toLowerCase();
+  const isGeneral = checkIsGeneral(key);
+
+  if (arg === 'on' || arg === 'off') {
+    await replyToThread(key, await applyAutoContinueLimits(key, isGeneral, arg === 'on'));
+    return;
+  }
+
+  const isEnabled = isGeneral
+    ? state.getAutoContinueOnLimitGlobalDefault()
+    : state.checkIsAutoContinueOnLimitEnabled(key);
+  const stateWord = isEnabled ? t('autoContinueLimits.on') : t('autoContinueLimits.off');
+  const title = isGeneral
+    ? t('autoContinueLimits.titleGeneral', { state: stateWord })
+    : t('autoContinueLimits.title', { state: stateWord });
+  await replyToThread(key, title, buildAutoContinueLimitsKeyboard(isEnabled, getArmedLimitRetryFireAt(key)));
+});
+
 // `/compact` — shrink the agent's context. BOT-OWNED, because "forward the text
 // and hope" only works for a backend that parses slash commands itself: OpenCode's
 // prompt transport does not, so the literal `/compact` used to reach the model as
@@ -7939,7 +8155,7 @@ const botCommands = new Set([
   'start', 'claude', 'opencode', 'oc', 'terminal', 'agent', 'sessions', 'resume', 'cancel', 'model', 'connect',
   'disconnect', 'stop', 'stopall', 'stop-all', 'status', 'c', 'y', 'n', 'enter', 'up', 'down', 'tab', 'esc', 'escape', 'output', 'clear_messages',
   'bind', 'unbind', 'where', 'ls', 'list', 'new', 'clear_session', 'whoami', 'version', 'help', 'language', 'lang',
-  'doctor', 'mcp', 'rename_session', 'compact', 'compact_on_idle', 'trace', 'timestamps', 'timezone', 'schedule', 'thinking', 'tool_results',
+  'doctor', 'mcp', 'rename_session', 'compact', 'compact_on_idle', 'auto_continue_limits', 'trace', 'timestamps', 'timezone', 'schedule', 'thinking', 'tool_results',
   'subagent', 'claude_mode', 'effort', 'verbosity', 'quit', 'q', 'quit-all', 'quitall', 'pair',
 ]);
 
@@ -9380,6 +9596,64 @@ async function handleCompactOnIdleCallback(ctx: Context, enabled: boolean): Prom
 
 bot.action('coi_on', (ctx) => handleCompactOnIdleCallback(ctx, true));
 bot.action('coi_off', (ctx) => handleCompactOnIdleCallback(ctx, false));
+
+/**
+ * @description Rewrite the tapped picker into a final, keyboard-less confirmation:
+ * a pick consumes the menu (the `/language` picker is the reference), so the same
+ * button can't be acted on twice and the topic reads truthfully. Best-effort — a
+ * failed edit only costs the relabel, never the state change that preceded it.
+ */
+async function consumeAutoContinueLimitsPicker(key: ThreadKey, cbMsg: Message | undefined, text: string): Promise<void> {
+  if (!cbMsg) return;
+  try {
+    await enqueueSend(key, () => bot.telegram.editMessageText(key.chatId, cbMsg.message_id, undefined, text));
+  } catch (e) {
+    const desc = checkIsApiError(e) ? getErrorDescription(e) : '';
+    if (!/message is not modified/i.test(desc)) console.warn('[acl_cb] picker relabel failed:', desc || e);
+  }
+}
+
+/** Shared `acl_on` / `acl_off` tap handler: apply, then consume the picker. */
+async function handleAutoContinueLimitsCallback(ctx: Context, enabled: boolean): Promise<void> {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  await withThreadLocale(key, async () => {
+    const confirmation = await applyAutoContinueLimits(key, checkIsGeneral(key), enabled);
+    await ctx.answerCbQuery();
+    await consumeAutoContinueLimitsPicker(key, ctx.callbackQuery?.message as Message | undefined, confirmation);
+  });
+}
+
+bot.action('acl_on', (ctx) => handleAutoContinueLimitsCallback(ctx, true));
+bot.action('acl_off', (ctx) => handleAutoContinueLimitsCallback(ctx, false));
+
+// «⏭ Skip once» in the `/auto_continue_limits` picker: drop THIS armed resume and
+// leave the on/off setting alone. The episode is identified by the `fireAt` baked
+// into the callback data, so an untouched older picker can never cancel a LATER
+// episode (pure `getArmedRetrySkipDecision`); a stale tap changes nothing and says
+// so. A later limit error arms again normally — `cancelApiRetry` only clears the
+// record, it sets no "never again" flag.
+bot.action(new RegExp(`^${skipArmedRetryCallbackPrefix}(\\d+)$`), async (ctx) => {
+  const key = await authoriseContext(ctx);
+  if (!key) { await ctx.answerCbQuery(t('cb.access_denied')); return; }
+  const requestedFireAt = parseSkipArmedRetryCallbackData(`${skipArmedRetryCallbackPrefix}${ctx.match[1]}`);
+  const decision = requestedFireAt === null
+    ? 'expired'
+    : getArmedRetrySkipDecision({ armedFireAt: getArmedLimitRetryFireAt(key), requestedFireAt });
+  await withThreadLocale(key, async () => {
+    if (decision === 'expired') {
+      await ctx.answerCbQuery(t('autoContinueLimits.skipExpired'));
+      return;
+    }
+    cancelApiRetry(key);
+    await ctx.answerCbQuery(t('autoContinueLimits.skipDone'));
+    await consumeAutoContinueLimitsPicker(
+      key,
+      ctx.callbackQuery?.message as Message | undefined,
+      t('autoContinueLimits.skippedNotice'),
+    );
+  });
+});
 
 // D1: a tap on an idle-compaction RE-ASKED question button. The original request
 // was rejected server-side during the compaction, so the chosen option label is
@@ -11090,6 +11364,7 @@ export const COMMANDS_MENU = [
   { command: 'quitall', description: '🚪 Quit ALL agents (General-only)' },
   { command: 'compact', description: '🧹 Compact agent context' },
   { command: 'compact_on_idle', description: '🧹 Auto-compact after idle (toggle)' },
+  { command: 'auto_continue_limits', description: '🚧 Auto-resume after a usage limit (toggle)' },
   { command: 'schedule', description: '⏰ Schedule a prompt (agent does the work)' },
   { command: 'status', description: '📊 Show status' },
   { command: 'output', description: '📜 Last 500 lines' },
@@ -11587,10 +11862,99 @@ function restoreApiRetries(): void {
       attempt: record.attempt,
       kind: record.kind,
       firedAt: null,
+      fireAt: record.fireAt,
     });
     restored += 1;
   }
   console.log(`[reattach] api retries: re-armed ${restored}`);
+}
+
+/**
+ * @description Recover a usage/session-limit episode that ENDED BEFORE this boot
+ * and left no armed retry behind — the case {@link restoreApiRetries} cannot help
+ * with, because there is nothing persisted to re-arm. It happens whenever the
+ * limit wording was not yet recognised when the error landed: the topic is parked
+ * on a limit error and a bot update alone would never resume it.
+ *
+ * JSON-STREAM CLAUDE ONLY (see `utils/limitEpisodeRecovery.ts`): that backend is
+ * the one whose evidence outlives the bot — its terminal `result` frame sits at the
+ * end of the session's append-only `stdout.jsonl`. Only the TAIL is read
+ * ({@link limitEpisodeTailMaxBytes}), never the whole log. A recovered episode goes
+ * through {@link handleApiError}, so the notice, the timer, the persistence and the
+ * `/auto_continue_limits` gate behave exactly as for a live error — there is no second
+ * arming path to keep in sync.
+ *
+ * MUST run AFTER {@link restoreApiRetries} so an already-armed thread is visible
+ * and skipped. A re-armed episode whose reset time has passed needs no special
+ * case: the retry plan clamps the negative delay to zero.
+ *
+ * Each arming STAMPS the log's identity (`state.json` `limitEpisodesRecovered`), so
+ * an episode is recovered at most once: «⏭ Skip once», a user takeover and a
+ * give-up all clear the armed record while leaving the same trailing error in the
+ * log, and hot mode reloads the bot on every code change — without the stamp each
+ * reload resurrected the settled wait.
+ */
+function recoverLimitEpisodesFromDisk(): void {
+  const jsonStreamAdapter = getAdapter(claudeJsonStreamAdapterName);
+  const now = Date.now();
+  let recovered = 0;
+  for (const { key } of state.listBindings()) {
+    const agent = state.getAgent(key);
+    if (agent?.name !== claudeJsonStreamAdapterName || !agent.claudeSessionId) continue;
+    if (!jsonStreamAdapter.checkIsActive(key)) continue;
+    // A topic with auto-continue OFF has nothing to recover — and routing a
+    // 12h-old stale error through `handleApiError` would re-post the OFF notice
+    // (its dedup is in-memory) after EVERY boot, i.e. on every hot reload.
+    if (!state.checkIsAutoContinueOnLimitEnabled(key)) continue;
+    const keyStr = keyToString(key);
+    const { stdoutFile } = getJsonStreamSessionPaths(resolveJsonStreamSessionDir(getDataDir(), key));
+
+    // ONE stat: size and mtime must describe the same instant, because together
+    // they are the episode identity persisted below.
+    let log: LimitEpisodeMarker;
+    try {
+      const stat = fs.statSync(stdoutFile);
+      log = { sizeBytes: stat.size, mtimeMs: stat.mtimeMs };
+    } catch {
+      continue; // no stdout log for this thread (yet) — nothing to recover
+    }
+    if (log.sizeBytes === 0) continue;
+
+    let errorText: string | null = null;
+    try {
+      const tail = readFileByteRange(
+        stdoutFile,
+        Math.max(0, log.sizeBytes - limitEpisodeTailMaxBytes),
+        log.sizeBytes,
+      );
+      errorText = getLastTerminalErrorText(tail.toString('utf8'));
+    } catch (e) {
+      console.warn(`[limitRecovery] ${keyStr}: cannot read stdout tail:`, e instanceof Error ? e.message : e);
+      continue;
+    }
+
+    const decision = decideLimitEpisodeRecovery({
+      errorText,
+      log,
+      handled: state.getLimitEpisodeRecovered(key),
+      now,
+      hasArmedRetry: apiRetryTimers.has(keyStr),
+    });
+    if (decision.action === 'skip') {
+      if (decision.reason !== 'noError') console.log(`[limitRecovery] ${keyStr}: skipped (${decision.reason})`);
+      continue;
+    }
+    console.log(`[limitRecovery] ${keyStr}: re-arming a limit wait left over from before the restart`);
+    // Stamp the log identity BEFORE arming: this trailing error is now handled, so
+    // a later boot must not recover it again even once the armed record is gone
+    // («⏭ Skip once», a user takeover, or a give-up all clear it).
+    void state
+      .setLimitEpisodeRecovered(key, log)
+      .catch(e => console.error('[limitRecovery] marker persist failed:', e));
+    void withThreadLocale(key, () => handleApiError(key, decision.cls));
+    recovered += 1;
+  }
+  if (recovered > 0) console.log(`[reattach] limit episodes: recovered ${recovered}`);
 }
 
 /**
@@ -12152,6 +12516,12 @@ export async function startBot(): Promise<void> {
   //     restart. AFTER reattach (and restorePendingQuestions) so the kick lands
   //     in a live session; a past fireAt fires one delayed catch-up.
   restoreApiRetries();
+
+  // 5c-bis. Recover a limit episode that ENDED before this boot and left nothing
+  //     persisted (an unrecognised wording at the time): the json-stream backend's
+  //     stdout tail still holds its terminal error frame. AFTER restoreApiRetries
+  //     so an already-armed thread is skipped.
+  recoverLimitEpisodesFromDisk();
 
   // 5d. Delete transient status frames orphaned by an UNGRACEFUL exit (S2). AFTER
   //     reattach so each leftover frame is provably stale (the session is idle /

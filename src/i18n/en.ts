@@ -81,6 +81,7 @@ export const enDict: Record<string, string> = {
     '/quit /status /output — control\n' +
     '/compact — compact agent context\n' +
     '/compact_on_idle — auto-compact after idle (toggle)\n' +
+    '/auto_continue_limits — auto-resume after a usage limit (toggle)\n' +
     '/clear — delete thread messages\n' +
     '/c /y /n /enter /up /down /tab /esc — TUI keys (Claude)\n' +
     '/bind — manage binding',
@@ -330,6 +331,26 @@ export const enDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'Auto-compact on idle applies to an active agent session. Start /claude or /opencode in a bound topic first.',
   'compactOnIdle.pendingQuestionReask': '❓ You still have a pending question. Tap an option to answer it and continue:',
 
+  'autoContinueLimits.on': 'ON',
+  'autoContinueLimits.off': 'OFF',
+  'autoContinueLimits.title':
+    '🚧 Auto-resume after a usage limit for this topic: {state}\n\nWhen the agent hits a usage / session limit, the bot waits for the window to reset and then tells the agent to continue by itself (the resume message is pinned, so a muted topic still notifies you).\n\nTo switch it for ALL topics at once, run this in the General topic.',
+  'autoContinueLimits.titleGeneral':
+    '🚧 Auto-resume after a usage limit — default for ALL topics: {state}\n\nWhen an agent hits a usage / session limit, the bot waits for the window to reset and then tells the agent to continue by itself.\n\nEach topic can still override this with its own /auto_continue_limits.',
+  'autoContinueLimits.enableButton': 'Enable',
+  'autoContinueLimits.disableButton': 'Disable',
+  'autoContinueLimits.skipButton': '⏭ Skip once',
+  'autoContinueLimits.skipDone': 'This resume was skipped.',
+  'autoContinueLimits.skipExpired': 'Nothing to skip — this wait is already over.',
+  'autoContinueLimits.skippedNotice':
+    '⏭ Skipped: I will not resume this one by myself. Write to me when to continue — auto-resume stays on for this topic.',
+  'autoContinueLimits.noticeHint':
+    'Run /auto_continue_limits to skip this one resume or to turn auto-resume off for this topic.',
+  'autoContinueLimits.setThisTopic': '✅ Auto-resume after a usage limit: {state} for this topic.',
+  'autoContinueLimits.setGlobal': '✅ Auto-resume after a usage limit: {state} for ALL topics (per-topic overrides still apply).',
+  'autoContinueLimits.limitReachedDisabled':
+    '🚧 Usage limit reached. Auto-resume is off for this topic, so I will wait — write to me when to continue (/auto_continue_limits on to resume automatically).',
+
   'connect.prompt_key': '🔑 Send the API key for `{provider}` as the next message. I will delete the key message from history.',
   'connect.empty_key': '❌ API key is empty. Send the key as the next message.',
   'connect.invalid_key': '❌ That does not look like an API key (it has spaces or non-Latin characters). Send just the key as the next message, or run /connect again.',
@@ -484,6 +505,8 @@ export const enDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 Usage limit reached — will auto-resume after reset (~{time}).',
   'apiRetry.resuming': '↻ Resuming…',
+  'apiRetry.limitResetResuming':
+    '✅ The limit window has reset — resuming work in this topic.',
   'apiRetry.giveUp':
     "⚠️ Couldn't resume after {attempts} attempts. Message me when to continue.",
   'apiRetry.continueNudge': 'Continue from where you left off.',

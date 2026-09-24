@@ -144,4 +144,66 @@ describe('StateStore api-retry collection', () => {
     // The live store is unaffected by mutating the returned snapshot.
     assert.equal(Object.keys(store.getApiRetries()).length, 1);
   });
+
+  // ── handled-limit-episode markers (boot-recovery guard) ──
+  //
+  // The marker records which trailing `stdout.jsonl` error the boot recovery
+  // already armed from, so a hot reload cannot resurrect a wait that was settled
+  // by «⏭ Skip once» / a takeover / a give-up. Its lifetime is therefore the
+  // OPPOSITE of the armed record's: it must survive `clearApiRetry` and die with
+  // the session ids / binding.
+
+  const sampleMarker = { sizeBytes: 4096, mtimeMs: 1_717_000_000_000 };
+
+  it('round-trips a handled-episode marker across a StateStore reload', async () => {
+    const store = trackStore(new StateStore(dataDir, { saveDebounceMs: 20 }));
+    await store.init();
+    await store.setLimitEpisodeRecovered(threadA, sampleMarker);
+    await store.flush();
+
+    const reloaded = trackStore(new StateStore(dataDir, { saveDebounceMs: 20 }));
+    await reloaded.init();
+    // Both fields must survive — the guard compares size AND mtime, so a lost
+    // field would make every boot see a "changed" log and re-arm.
+    assert.deepEqual(reloaded.getLimitEpisodeRecovered(threadA), sampleMarker);
+    assert.equal(reloaded.getLimitEpisodeRecovered(threadB), undefined);
+  });
+
+  it('clearApiRetry does NOT drop the marker — it has to outlive the settled record', async () => {
+    const store = trackStore(new StateStore(dataDir, { saveDebounceMs: 20 }));
+    await store.init();
+    await store.setApiRetry(threadA, sampleRetry(1, 1_717_000_000_000, 'usageLimit'));
+    await store.setLimitEpisodeRecovered(threadA, sampleMarker);
+
+    // This is what «⏭ Skip once» / any inbound message does. If it also wiped the
+    // marker, the next hot reload would arm the very wait the user just skipped.
+    await store.clearApiRetry(threadA);
+    assert.deepEqual(store.getLimitEpisodeRecovered(threadA), sampleMarker);
+  });
+
+  it('releasing the session ids drops the marker and the emptied map', async () => {
+    const store = trackStore(new StateStore(dataDir, { saveDebounceMs: 20 }));
+    await store.init();
+    await store.setLimitEpisodeRecovered(threadA, sampleMarker);
+    await store.setLimitEpisodeRecovered(threadB, sampleMarker);
+
+    // `/new`, `/quit` and `/bind`-leave all funnel through clearAgentSessionIds.
+    await store.clearAgentSessionIds(threadA);
+    assert.equal(store.getLimitEpisodeRecovered(threadA), undefined);
+    assert.deepEqual(store.getLimitEpisodeRecovered(threadB), sampleMarker, 'other threads untouched');
+
+    await store.clearAgentSessionIds(threadB);
+    await store.flush();
+    const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'state.json'), 'utf-8'));
+    assert.equal('limitEpisodesRecovered' in onDisk, false, 'no stale empty map left behind');
+  });
+
+  it('removing the binding drops the marker (unbind / deleted topic)', async () => {
+    const store = trackStore(new StateStore(dataDir, { saveDebounceMs: 20 }));
+    await store.init();
+    await store.setLimitEpisodeRecovered(threadA, sampleMarker);
+
+    await store.removeBinding(threadA);
+    assert.equal(store.getLimitEpisodeRecovered(threadA), undefined);
+  });
 });

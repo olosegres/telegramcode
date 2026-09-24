@@ -8,6 +8,7 @@ import {
   type ApiRetryState,
   type DisplayVerbosityMode,
   type JsonStreamTailOffset,
+  type LimitEpisodeMarker,
   type PendingQuestionState,
   type ResolvedThreadDisplayPrefs,
   type SeenWatermark,
@@ -16,6 +17,7 @@ import {
 } from './types';
 import { defaultDisplayVerbosityMode, normalizeDisplayVerbosityMode } from './utils/displayVerbosity';
 import { resolveCompactOnIdleEnabled } from './utils/compactOnIdle';
+import { resolveAutoContinueOnLimitEnabled } from './utils/autoContinueOnLimit';
 import type { ScheduleRecord } from './scheduler/types';
 import type { Locale } from './i18n';
 
@@ -253,6 +255,19 @@ export interface StateV1 {
    */
   compactIdleLatchedThreads?: string[];
   /**
+   * Limit auto-continue toggle (`/auto_continue_limits`). `autoContinueOnLimitEnabled` is
+   * the INSTANCE-WIDE default, driven from the General topic; absent ⇒ ON (the
+   * behaviour was unconditional before the toggle existed), stored EXPLICITLY
+   * (incl. `false`) so a General «Disable» is durable and not re-enabled by the
+   * default on the next boot. `autoContinueOnLimitOverrides` holds per-thread
+   * explicit overrides keyed by {@link ThreadKey} string — a present entry (true
+   * OR false) wins over the global default. Both optional so older state files
+   * stay valid; lifecycle-independent (only `/auto_continue_limits` mutates them, never
+   * session teardown). Same shape discipline as the `compactOnIdle*` pair.
+   */
+  autoContinueOnLimitEnabled?: boolean;
+  autoContinueOnLimitOverrides?: Record<string, boolean>;
+  /**
    * Persisted scheduled jobs, keyed by {@link ScheduleRecord.id}. Optional so
    * older state files (created before the scheduler feature) stay valid —
    * `loadStateFile`'s shape check doesn't require it and a missing value is an
@@ -304,6 +319,16 @@ export interface StateV1 {
    * after sessions are reattached, so the kick lands in a live session.
    */
   apiRetries?: Record<string, ApiRetryState>;
+  /**
+   * Boot-recovery markers: per {@link ThreadKey} string, the `stdout.jsonl`
+   * identity the recovery last armed a limit wait from (see
+   * {@link LimitEpisodeMarker}). It is what stops a hot reload from resurrecting a
+   * wait that was already settled — «⏭ Skip once», a user takeover, or a give-up
+   * all clear `apiRetries`, leaving the same trailing error in the log. Optional so
+   * older state files stay valid; dropped when the thread's session ids are
+   * released or its binding goes away.
+   */
+  limitEpisodesRecovered?: Record<string, LimitEpisodeMarker>;
   /**
    * Per-thread OpenCode output-verbosity rendering preferences (thinking /
    * tool-results / sub-agent display), keyed by {@link ThreadKey} string. Each
@@ -810,6 +835,9 @@ export class StateStore {
       delete this.state.bindings[k];
       delete this.state.agents[k];
       delete this.state.messages[k];
+      // The thread is gone (unbind / deleted topic) → so is anything a boot
+      // recovery could resume for it.
+      this.dropLimitEpisodeRecovered(k);
       this.scheduleSave();
     });
   }
@@ -975,8 +1003,16 @@ export class StateStore {
   async clearAgentSessionIds(key: ThreadKey): Promise<void> {
     const k = keyToString(key);
     await this.withLock(key, async () => {
+      // A released session can never be the one a boot recovery resumes (it checks
+      // `checkIsActive` + the persisted session id), so its handled-limit-episode
+      // marker becomes a dead key — drop it with the ids instead of letting
+      // `state.json` accumulate one per retired session.
+      const droppedMarker = this.dropLimitEpisodeRecovered(k);
       const existing = this.state.agents[k];
-      if (!existing) return;
+      if (!existing) {
+        if (droppedMarker) this.scheduleSave();
+        return;
+      }
       const { claudeSessionId, opencodeSessionId, jsonStreamTail, startedAt, ...rest } = existing;
       this.state.agents[k] = rest;
       this.scheduleSave();
@@ -1301,6 +1337,66 @@ export class StateStore {
     this.scheduleSave();
   }
 
+  // ── limit auto-continue toggle (`/auto_continue_limits`) ──
+
+  /**
+   * @description The instance-wide limit-auto-continue default (driven from the
+   * General topic). ON when unset — the auto-resume was unconditional before the
+   * toggle, so the default must preserve it.
+   */
+  getAutoContinueOnLimitGlobalDefault(): boolean {
+    return this.state.autoContinueOnLimitEnabled ?? true;
+  }
+
+  /**
+   * @description The per-thread limit-auto-continue override, or `undefined` when
+   * the thread follows the instance default. A present value (true OR false) wins.
+   */
+  getAutoContinueOnLimitOverride(key: ThreadKey): boolean | undefined {
+    return this.state.autoContinueOnLimitOverrides?.[keyToString(key)];
+  }
+
+  /**
+   * @description Whether limit auto-continue is effectively enabled for `key`: the
+   * per-thread override if set, else the instance default (ON when unset).
+   */
+  checkIsAutoContinueOnLimitEnabled(key: ThreadKey): boolean {
+    return resolveAutoContinueOnLimitEnabled(
+      this.state.autoContinueOnLimitEnabled,
+      this.getAutoContinueOnLimitOverride(key),
+    );
+  }
+
+  /**
+   * @description Set the instance-wide limit-auto-continue default (from General).
+   * Stored EXPLICITLY as a boolean (incl. `false`) so a «Disable» is durable and
+   * distinguishable from "never set" (which reads back as the ON default) —
+   * mirrors {@link setCompactOnIdleGlobalDefault}. Debounced (a preference, not
+   * crash-critical).
+   */
+  async setAutoContinueOnLimitGlobalDefault(enabled: boolean): Promise<void> {
+    if (this.state.autoContinueOnLimitEnabled === enabled) return;
+    this.state.autoContinueOnLimitEnabled = enabled;
+    this.scheduleSave();
+  }
+
+  /**
+   * @description Set the per-thread limit-auto-continue override (from a regular
+   * topic). Stored explicitly (a present true/false wins over the global
+   * default); the map is created lazily on the first override, so an all-default
+   * instance leaves a clean `state.json`. Debounced.
+   */
+  async setAutoContinueOnLimitOverride(key: ThreadKey, enabled: boolean): Promise<void> {
+    const k = keyToString(key);
+    await this.withLock(key, async () => {
+      if (this.state.autoContinueOnLimitOverrides?.[k] === enabled) {
+        return;
+      }
+      (this.state.autoContinueOnLimitOverrides ??= {})[k] = enabled;
+      this.scheduleSave();
+    });
+  }
+
   // ── instance-wide timezone (`/timezone`) ──
 
   /**
@@ -1607,6 +1703,46 @@ export class StateStore {
       }
       this.scheduleSave();
     });
+  }
+
+  // ── handled limit episodes (boot-recovery marker) ──
+
+  /**
+   * @description The `stdout.jsonl` identity recorded when the boot recovery last
+   * armed a limit wait for `key`, or `undefined` when it never did. Compared
+   * against the live stat so an UNCHANGED log is not recovered twice — see
+   * {@link LimitEpisodeMarker}.
+   */
+  getLimitEpisodeRecovered(key: ThreadKey): LimitEpisodeMarker | undefined {
+    return this.state.limitEpisodesRecovered?.[keyToString(key)];
+  }
+
+  /**
+   * @description Record the log identity the boot recovery just armed from.
+   * Debounced (a restart guard, not crash-critical: losing the last <=500ms costs
+   * at worst one repeated recovery). NOT cleared by `cancelApiRetry` on purpose —
+   * that fires on «⏭ Skip once» and on every inbound message, which is exactly the
+   * settled-episode case the marker has to outlive.
+   */
+  async setLimitEpisodeRecovered(key: ThreadKey, value: LimitEpisodeMarker): Promise<void> {
+    const k = keyToString(key);
+    await this.withLock(key, async () => {
+      (this.state.limitEpisodesRecovered ??= {})[k] = value;
+      this.scheduleSave();
+    });
+  }
+
+  /**
+   * Drop `keyStr`'s handled-episode marker (and the whole map once empty). Returns
+   * whether anything changed. Caller must hold the key lock.
+   */
+  private dropLimitEpisodeRecovered(keyStr: string): boolean {
+    if (!this.state.limitEpisodesRecovered?.[keyStr]) return false;
+    delete this.state.limitEpisodesRecovered[keyStr];
+    if (Object.keys(this.state.limitEpisodesRecovered).length === 0) {
+      delete this.state.limitEpisodesRecovered;
+    }
+    return true;
   }
 
   // ── transient status-frame ids (restart cleanup) ──

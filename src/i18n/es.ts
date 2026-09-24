@@ -77,6 +77,7 @@ export const esDict: Record<string, string> = {
     '/quit /status /output — control\n' +
     '/compact — compactar el contexto del agente\n' +
     '/compact_on_idle — compactar automáticamente tras inactividad (conmutador)\n' +
+    '/auto_continue_limits — reanudar automáticamente tras un límite de uso (conmutador)\n' +
     '/clear — eliminar mensajes del hilo\n' +
     '/c /y /n /enter /up /down /tab /esc — teclas TUI (Claude)\n' +
     '/bind — gestionar vínculo',
@@ -319,6 +320,21 @@ export const esDict: Record<string, string> = {
   'compactOnIdle.unsupported': 'El compactado automático por inactividad se aplica a una sesión de agente activa. Inicia primero /claude o /opencode en un tema vinculado.',
   'compactOnIdle.pendingQuestionReask': '❓ Aún tienes una pregunta pendiente. Toca una opción para responderla y continuar:',
 
+  'autoContinueLimits.on': 'ACTIVADO',
+  'autoContinueLimits.off': 'DESACTIVADO',
+  'autoContinueLimits.title': '🚧 Reanudación automática tras un límite de uso para este tema: {state}\n\nCuando el agente alcanza un límite de uso o de sesión, el bot espera a que la ventana se restablezca y luego le pide al agente que continúe por sí mismo (el mensaje de reanudación se fija, así un tema silenciado te sigue notificando).\n\nPara cambiarlo para TODOS los temas a la vez, ejecútalo en el tema General.',
+  'autoContinueLimits.titleGeneral': '🚧 Reanudación automática tras un límite de uso — predeterminado para TODOS los temas: {state}\n\nCuando un agente alcanza un límite de uso o de sesión, el bot espera a que la ventana se restablezca y luego le pide al agente que continúe por sí mismo.\n\nCada tema puede anularlo con su propio /auto_continue_limits.',
+  'autoContinueLimits.enableButton': 'Activar',
+  'autoContinueLimits.disableButton': 'Desactivar',
+  'autoContinueLimits.skipButton': '⏭ Omitir una vez',
+  'autoContinueLimits.skipDone': 'Se omitió esta reanudación.',
+  'autoContinueLimits.skipExpired': 'Nada que omitir: esta espera ya terminó.',
+  'autoContinueLimits.skippedNotice': '⏭ Omitido: no reanudaré esta por mi cuenta. Escríbeme cuándo continuar; la reanudación automática sigue activada para este tema.',
+  'autoContinueLimits.noticeHint': 'Ejecuta /auto_continue_limits para omitir esta reanudación o desactivar la reanudación automática en este tema.',
+  'autoContinueLimits.setThisTopic': '✅ Reanudación automática tras un límite de uso: {state} para este tema.',
+  'autoContinueLimits.setGlobal': '✅ Reanudación automática tras un límite de uso: {state} para TODOS los temas (las anulaciones por tema siguen aplicándose).',
+  'autoContinueLimits.limitReachedDisabled': '🚧 Límite de uso alcanzado. La reanudación automática está desactivada en este tema, así que espero: escríbeme cuándo continuar (/auto_continue_limits on para reanudar automáticamente).',
+
   'connect.prompt_key': '🔑 Envía la API key para `{provider}` como próximo mensaje. Eliminaré el mensaje con la clave del historial.',
   'connect.empty_key': '❌ La API key está vacía. Envía la clave como próximo mensaje.',
   'connect.invalid_key': '❌ Eso no parece una API key (tiene espacios o caracteres no latinos). Envía solo la key como próximo mensaje, o ejecuta /connect de nuevo.',
@@ -472,6 +488,7 @@ export const esDict: Record<string, string> = {
   'apiRetry.usageLimitResetNotice':
     '🚧 Límite de uso alcanzado — reanudación automática tras reset (~{time}).',
   'apiRetry.resuming': '↻ Reanudando…',
+  'apiRetry.limitResetResuming': '✅ La ventana del límite se ha restablecido: retomo el trabajo en este tema.',
   'apiRetry.giveUp':
     '⚠️ No se pudo reanudar tras {attempts} intentos. Escríbeme cuándo continuar.',
   'apiRetry.continueNudge': 'Continúa desde donde te detuviste.',

@@ -143,3 +143,69 @@ test('fire-once: a persistent logged-out row is NEW only on first appearance', (
     'a stale logout row must not re-fire on a later redraw',
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Case (d): a usage/session-limit row (no `API Error:` marker at all)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('detect (d): the verbatim live session-limit row → the line', () => {
+  const line = "You've hit your session limit · resets 10:50pm (UTC)";
+  assert.equal(getClaudeAgentErrorLine(line), line);
+});
+
+test('detect (d): the limit row behind a `⎿` / `⏺` / `●` marker → the line', () => {
+  for (const line of [
+    '⎿  5-hour limit reached ∙ resets 3am',
+    "⏺ You've hit your weekly limit · resets Monday",
+    '●  Usage limit reached — resets at 9pm',
+  ]) {
+    assert.equal(getClaudeAgentErrorLine(line), line, line);
+  }
+});
+
+test('detect (d): finds the limit row inside a full multi-line pane', () => {
+  const pane = [
+    '● Let me check the remaining work.',
+    "You've hit your session limit · resets 10:50pm (UTC)",
+    '❯ ',
+  ].join('\n');
+  assert.equal(getClaudeAgentErrorLine(pane), "You've hit your session limit · resets 10:50pm (UTC)");
+});
+
+// Same false-positive reasoning as the auth shape: a TOOL result is rendered under
+// `⎿`, so a row that merely QUOTES a limit phrase deeper in the line (the agent
+// grepping this very source, or a log echo) must NOT fire. The row lead-in allows
+// only a few punctuation-free words, which a path / log prefix never is.
+test('NEGATIVE: a `⎿` tool-result row QUOTING the limit phrase deeper in the line → null', () => {
+  for (const line of [
+    "⎿  bot-console-2026092400.log:88:[Claude] API error detected: You've hit your session limit",
+    '⎿  src/apiErrorRetry.ts:120: * qualified limits: session limit, weekly limit, 5-hour limit',
+    '⎿  README.md:12: the bot waits out a usage limit and resumes on its own',
+  ]) {
+    assert.equal(getClaudeAgentErrorLine(line), null, line);
+  }
+});
+
+// Case (d) has no `⎿` / `API Error:` anchor, so a limit phrase at the START of a
+// line is not enough on its own: the agent's OWN answer prose about limits would
+// otherwise arm a 60-min wait and push a "continue" nudge into a healthy topic.
+// The row must ALSO read like an error (`reached` / `resets` / `·` / …) — prose
+// uses the bare verb ("limits reset weekly"), which is not in that list.
+test('NEGATIVE: the agent\'s own prose leading with a limit phrase does NOT fire', () => {
+  for (const line of [
+    'Session limits reset weekly for every plan.',
+    '  Usage limits apply per 5-hour window and reset automatically.',
+    'Quota is the word for a per-account allowance.',
+    "  Session limit handling is documented in CLAUDE.md, so I'll follow it.",
+  ]) {
+    assert.equal(getClaudeAgentErrorLine(line), null, line);
+  }
+});
+
+test('end-to-end: a detected limit row classifies to usageLimit with a reset time', () => {
+  const line = getClaudeAgentErrorLine("You've hit your session limit · resets 10:50pm (UTC)");
+  assert.ok(line !== null);
+  const cls = classifyAgentApiError(line, fixedNow);
+  assert.equal(cls?.kind, 'usageLimit');
+  assert.equal(cls?.resetAt, Date.parse('2026-07-01T22:50:00.000Z'));
+});
